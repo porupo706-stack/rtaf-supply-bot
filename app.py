@@ -1,4 +1,18 @@
 import os
+import pathlib
+import shutil
+
+# 1. คัดลอกไฟล์ storage_state.json ไปไว้ในโฟลเดอร์ระบบ "ตั้งแต่บรรทัดแรกสุด" ก่อนเริ่มทำงานใดๆ
+try:
+    home_dir = pathlib.Path.home()
+    target_dir = home_dir / ".notebooklm" / "profiles" / "default"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if os.path.exists("storage_state.json"):
+        shutil.copy("storage_state.json", target_dir / "storage_state.json")
+except Exception as e:
+    print(f"Setup auth error: {e}")
+
+# 2. ติดตั้ง Playwright browser สำหรับรันเบราว์เซอร์เบื้องหลัง
 os.system("playwright install chromium")
 
 import streamlit as st
@@ -14,9 +28,7 @@ st.caption("ถาม-ตอบ ระเบียบและเอกสาร
 user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ ที่นี่...")
 
 async def get_answer(prompt):
-    # แก้ไขจุดที่ 1: เปลี่ยนมาใช้ .from_storage() เพื่อโหลดเซสชันที่เคยล็อกอินไว้อัตโนมัติ
     async with NotebookLMClient.from_storage() as client:
-        # แก้ไขจุดที่ 2: เปลี่ยนเป็น client.chat.ask และดึงข้อมูลจาก .answer
         result = await client.chat.ask(NOTEBOOK_ID, prompt)
         return result.answer
 
@@ -28,6 +40,5 @@ if user_input:
     # ประมวลผลและแสดงคำตอบ
     with st.chat_message("assistant"):
         with st.spinner("กำลังค้นหาข้อมูลพัสดุ..."):
-            # เนื่องจาก Streamlit เป็น Sync ต้องรัน Async ผ่าน asyncio
             answer = asyncio.run(get_answer(user_input))
             st.write(answer)
