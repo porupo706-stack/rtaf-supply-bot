@@ -1,4 +1,2 @@
-streamlit>=1.40
+streamlit
 notebooklm-py
-pandas
-plotly
