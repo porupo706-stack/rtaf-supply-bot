@@ -1,34 +1,21 @@
 import os
+import json
 import asyncio
-
 import streamlit as st
 
-from db import (
-    init_db,
-    save_log
-)
-
-from cache import (
-    get_cache,
-    save_cache
-)
-
-from router import (
-    route_notebook
-)
-
-from admin import (
-    show_dashboard
-)
-
-from notebooklm_service import (
-    ask_notebook
-)
+from notebooklm import NotebookLMClient
 
 
-# =================================================
+# =========================================================
 # CONFIG
-# =================================================
+# =========================================================
+
+NOTEBOOK_ID = "53c42aa4-91a9-46b0-9094-2b480d0f0c5f"
+
+
+# =========================================================
+# PAGE
+# =========================================================
 
 st.set_page_config(
     page_title="ผู้ช่วยงานพัสดุ ทอ.",
@@ -36,64 +23,75 @@ st.set_page_config(
     layout="centered"
 )
 
-init_db()
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.title("✈️ ผู้ช่วยงานพัสดุ ทอ.")
+
+st.caption(
+    "ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ "
+    "ขับเคลื่อนด้วย NotebookLM"
+)
 
 
-# =================================================
+# =========================================================
 # AUTH
-# =================================================
+# =========================================================
 
-try:
+def setup_auth():
 
-    os.environ[
-        "NOTEBOOKLM_AUTH_JSON"
-    ] = st.secrets[
-        "NOTEBOOKLM_AUTH_JSON"
-    ]
+    try:
+        auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
+    except Exception:
+        return False
 
-except Exception:
+    if not auth_json:
+        return False
+
+    os.environ["NOTEBOOKLM_AUTH_JSON"] = auth_json
+
+    return True
+
+
+# =========================================================
+# NOTEBOOKLM
+# =========================================================
+
+async def get_answer(prompt):
+
+    async with NotebookLMClient.from_storage() as client:
+
+        result = await client.chat.ask(
+            NOTEBOOK_ID,
+            prompt
+        )
+
+        return result.answer
+
+
+# =========================================================
+# CHECK AUTH
+# =========================================================
+
+if not setup_auth():
 
     st.error(
-        "ไม่พบ NOTEBOOKLM_AUTH_JSON"
+        "ยังไม่ได้ตั้งค่า NotebookLM Authentication"
+    )
+
+    st.info(
+        "กรุณาตั้งค่า NOTEBOOKLM_AUTH_JSON "
+        "ใน Streamlit Secrets"
     )
 
     st.stop()
 
 
-# =================================================
-# SIDEBAR
-# =================================================
-
-st.sidebar.title(
-    "⚙️ เมนู"
-)
-
-show_admin = st.sidebar.checkbox(
-    "Dashboard"
-)
-
-if show_admin:
-
-    show_dashboard()
-    st.stop()
-
-
-# =================================================
-# HEADER
-# =================================================
-
-st.title(
-    "✈️ ผู้ช่วยงานพัสดุ ทอ."
-)
-
-st.caption(
-    "ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ ขับเคลื่อนด้วย NotebookLM"
-)
-
-
-# =================================================
-# CHAT
-# =================================================
+# =========================================================
+# CHAT HISTORY
+# =========================================================
 
 if "messages" not in st.session_state:
 
@@ -102,93 +100,49 @@ if "messages" not in st.session_state:
 
 for message in st.session_state.messages:
 
-    with st.chat_message(
-        message["role"]
-    ):
+    with st.chat_message(message["role"]):
 
-        st.markdown(
-            message["content"]
-        )
+        st.markdown(message["content"])
 
 
-# =================================================
-# INPUT
-# =================================================
+# =========================================================
+# CHAT INPUT
+# =========================================================
 
-prompt = st.chat_input(
+user_input = st.chat_input(
     "พิมพ์คำถามเกี่ยวกับงานพัสดุ..."
 )
 
-if prompt:
 
+if user_input:
+
+    # User
     st.session_state.messages.append(
         {
             "role": "user",
-            "content": prompt
+            "content": user_input
         }
     )
 
-    with st.chat_message(
-        "user"
-    ):
-        st.markdown(prompt)
+    with st.chat_message("user"):
 
-    with st.chat_message(
-        "assistant"
-    ):
+        st.markdown(user_input)
+
+
+    # AI
+    with st.chat_message("assistant"):
 
         with st.spinner(
-            "🔎 กำลังค้นหาข้อมูล..."
+            "🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."
         ):
 
             try:
 
-                notebook_id = route_notebook(
-                    prompt
+                answer = asyncio.run(
+                    get_answer(user_input)
                 )
 
-                cached = get_cache(
-                    prompt
-                )
-
-                if cached:
-
-                    answer = cached
-                    cache_hit = True
-
-                else:
-
-                    result = asyncio.run(
-                        ask_notebook(
-                            notebook_id,
-                            prompt
-                        )
-                    )
-
-                    try:
-
-                        answer = result.answer
-
-                    except Exception:
-
-                        answer = str(result)
-
-                    save_cache(
-                        prompt,
-                        answer
-                    )
-
-                    cache_hit = False
-
-                st.markdown(
-                    answer
-                )
-
-                if cache_hit:
-
-                    st.caption(
-                        "⚡ ตอบจาก Cache"
-                    )
+                st.markdown(answer)
 
                 st.session_state.messages.append(
                     {
@@ -197,19 +151,12 @@ if prompt:
                     }
                 )
 
-                save_log(
-                    prompt,
-                    answer,
-                    notebook_id,
-                    cache_hit
-                )
-
             except Exception as e:
 
                 st.error(
-                    "เชื่อมต่อ NotebookLM ไม่สำเร็จ"
+                    "เกิดข้อผิดพลาดในการเชื่อมต่อ NotebookLM"
                 )
 
-                st.code(
-                    str(e)
+                st.caption(
+                    f"รายละเอียด: {str(e)}"
                 )
