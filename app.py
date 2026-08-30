@@ -1,44 +1,164 @@
 import os
-import pathlib
-import shutil
-
-# 1. คัดลอกไฟล์ storage_state.json ไปไว้ในโฟลเดอร์ระบบ "ตั้งแต่บรรทัดแรกสุด" ก่อนเริ่มทำงานใดๆ
-try:
-    home_dir = pathlib.Path.home()
-    target_dir = home_dir / ".notebooklm" / "profiles" / "default"
-    target_dir.mkdir(parents=True, exist_ok=True)
-    if os.path.exists("storage_state.json"):
-        shutil.copy("storage_state.json", target_dir / "storage_state.json")
-except Exception as e:
-    print(f"Setup auth error: {e}")
-
-# 2. ติดตั้ง Playwright browser สำหรับรันเบราว์เซอร์เบื้องหลัง
-os.system("playwright install chromium")
-
-import streamlit as st
+import json
 import asyncio
+import streamlit as st
+
 from notebooklm import NotebookLMClient
+
+
+# =========================================================
+# CONFIG
+# =========================================================
 
 NOTEBOOK_ID = "53c42aa4-91a9-46b0-9094-2b480d0f0c5f"
 
-st.title("✈️ ผู้ช่วยงานพัสดุ ทอ.")
-st.caption("ถาม-ตอบ ระเบียบและเอกสารพัสดุผ่าน NotebookLM")
 
-# กล่องรับข้อความจากผู้ใช้
-user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ ที่นี่...")
+# =========================================================
+# PAGE
+# =========================================================
+
+st.set_page_config(
+    page_title="ผู้ช่วยงานพัสดุ ทอ.",
+    page_icon="✈️",
+    layout="centered"
+)
+
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.title("✈️ ผู้ช่วยงานพัสดุ ทอ.")
+
+st.caption(
+    "ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ "
+    "ขับเคลื่อนด้วย NotebookLM"
+)
+
+
+# =========================================================
+# AUTH
+# =========================================================
+
+def setup_auth():
+
+    # อ่าน credential จาก Streamlit Secrets
+    try:
+        auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
+    except Exception:
+        return False
+
+    if not auth_json:
+        return False
+
+    # ส่งให้ notebooklm-py ผ่าน environment variable
+    os.environ["NOTEBOOKLM_AUTH_JSON"] = auth_json
+
+    return True
+
+
+# =========================================================
+# NOTEBOOKLM
+# =========================================================
 
 async def get_answer(prompt):
+
     async with NotebookLMClient.from_storage() as client:
-        result = await client.chat.ask(NOTEBOOK_ID, prompt)
+
+        result = await client.chat.ask(
+            NOTEBOOK_ID,
+            prompt
+        )
+
         return result.answer
 
+
+# =========================================================
+# CHECK AUTH
+# =========================================================
+
+if not setup_auth():
+
+    st.error(
+        "ยังไม่ได้ตั้งค่า NotebookLM Authentication"
+    )
+
+    st.info(
+        "กรุณาตั้งค่า NOTEBOOKLM_AUTH_JSON "
+        "ใน Streamlit Secrets"
+    )
+
+    st.stop()
+
+
+# =========================================================
+# CHAT HISTORY
+# =========================================================
+
+if "messages" not in st.session_state:
+
+    st.session_state.messages = []
+
+
+for message in st.session_state.messages:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(message["content"])
+
+
+# =========================================================
+# CHAT INPUT
+# =========================================================
+
+user_input = st.chat_input(
+    "พิมพ์คำถามเกี่ยวกับงานพัสดุ..."
+)
+
+
 if user_input:
-    # แสดงคำถามของผู้ใช้
+
+    # User
+    st.session_state.messages.append(
+        {
+            "role": "user",
+            "content": user_input
+        }
+    )
+
     with st.chat_message("user"):
-        st.write(user_input)
-    
-    # ประมวลผลและแสดงคำตอบ
+
+        st.markdown(user_input)
+
+
+    # AI
     with st.chat_message("assistant"):
-        with st.spinner("กำลังค้นหาข้อมูลพัสดุ..."):
-            answer = asyncio.run(get_answer(user_input))
-            st.write(answer)
+
+        with st.spinner(
+            "🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."
+        ):
+
+            try:
+
+                answer = asyncio.run(
+                    get_answer(user_input)
+                )
+
+                st.markdown(answer)
+
+                st.session_state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": answer
+                    }
+                )
+
+            except Exception as e:
+
+                st.error(
+                    "เกิดข้อผิดพลาดในการเชื่อมต่อ NotebookLM"
+                )
+
+                st.caption(
+                    f"รายละเอียด: {str(e)}"
+                )
