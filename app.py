@@ -42,7 +42,6 @@ st.caption(
 
 def setup_auth():
 
-    # อ่าน credential จาก Streamlit Secrets
     try:
         auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
     except Exception:
@@ -51,7 +50,6 @@ def setup_auth():
     if not auth_json:
         return False
 
-    # ส่งให้ notebooklm-py ผ่าน environment variable
     os.environ["NOTEBOOKLM_AUTH_JSON"] = auth_json
 
     return True
