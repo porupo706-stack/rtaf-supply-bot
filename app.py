@@ -59,7 +59,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # =========================================================
-# SIDEBAR: FILE UPLOAD (ย้ายมาไว้ด้านข้าง เพื่อให้ช่องแชทด้านล่างมีปุ่มส่งปกติ)
+# SIDEBAR: FILE UPLOAD
 # =========================================================
 with st.sidebar:
     st.header("📂 เมนูเสริม")
@@ -75,17 +75,21 @@ with st.sidebar:
     else:
         st.caption("ยังไม่ได้แนบไฟล์ (ระบบจะใช้ฐานข้อมูลหลัก ทอ.)")
 
-    # ปุ่มล้างประวัติแชทเสริมความสะดวก
     if st.button("🗑️ ล้างหน้าจอแชท"):
         st.session_state.messages = []
         st.rerun()
 
 # =========================================================
-# CHAT INPUT (กล่องพิมพ์ข้อความด้านล่าง พร้อมปุ่มส่งตามมาตรฐาน Streamlit)
+# USER INPUT & SEND BUTTON (เปลี่ยนมาใช้ช่องกรอก + ปุ่มกดส่งชัดเจน)
 # =========================================================
-user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ...")
+with st.form(key="chat_form", clear_on_submit=True):
+    user_input = st.text_input(
+        "พิมพ์คำถามเกี่ยวกับงานพัสดุที่นี่...", 
+        placeholder="เช่น คลังพัสดุแบ่งได้กี่ประเภท..."
+    )
+    submit_button = st.form_submit_button(label="🚀 ส่งคำถาม")
 
-if user_input:
+if submit_button and user_input:
     
     # 1. แสดงข้อความผู้ใช้บนหน้าจอ
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -98,7 +102,6 @@ if user_input:
     if uploaded_file is not None:
         file_content = ""
         try:
-            # แยกวิธีอ่านตามประเภทไฟล์
             if uploaded_file.name.endswith(".txt"):
                 file_content = uploaded_file.getvalue().decode("utf-8")
             elif uploaded_file.name.endswith(".csv"):
@@ -111,10 +114,8 @@ if user_input:
                     if text:
                         file_content += text + "\n"
             
-            # ป้องกันข้อความยาวเกินไป (ตัดรับแค่ 5000 ตัวอักษรแรก)
             file_content = file_content[:5000] 
             
-            # รวมเนื้อหาไฟล์เข้ากับคำถาม
             final_prompt = (
                 f"อ้างอิงข้อมูลจากไฟล์ที่แนบมานี้:\n"
                 f"-------------------\n{file_content}\n-------------------\n\n"
