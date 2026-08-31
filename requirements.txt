@@ -1,2 +1,5 @@
 streamlit
-notebooklm-py
+notebooklm-py[browser]
+playwright
+PyPDF2
+pandas
