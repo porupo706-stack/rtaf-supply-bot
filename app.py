@@ -59,15 +59,29 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # =========================================================
-# FILE UPLOAD (อัปโหลดไฟล์ถามเฉพาะกิจ)
+# SIDEBAR: FILE UPLOAD (ย้ายมาไว้ด้านข้าง เพื่อให้ช่องแชทด้านล่างมีปุ่มส่งปกติ)
 # =========================================================
-uploaded_file = st.file_uploader(
-    "📎 แนบไฟล์ประกอบคำถาม (รองรับไฟล์ PDF, TXT, CSV ขนาดไม่เกิน 10 หน้า)", 
-    type=["txt", "csv", "pdf"]
-)
+with st.sidebar:
+    st.header("📂 เมนูเสริม")
+    st.info("คุณสามารถแนบไฟล์เฉพาะกิจเพื่อให้ AI ช่วยวิเคราะห์จากไฟล์ได้ที่นี่ครับ")
+    
+    uploaded_file = st.file_uploader(
+        "แนบไฟล์ (PDF, TXT, CSV)", 
+        type=["txt", "csv", "pdf"]
+    )
+    
+    if uploaded_file:
+        st.success(f"แนบไฟล์สำเร็จ: {uploaded_file.name}")
+    else:
+        st.caption("ยังไม่ได้แนบไฟล์ (ระบบจะใช้ฐานข้อมูลหลัก ทอ.)")
+
+    # ปุ่มล้างประวัติแชทเสริมความสะดวก
+    if st.button("🗑️ ล้างหน้าจอแชท"):
+        st.session_state.messages = []
+        st.rerun()
 
 # =========================================================
-# CHAT INPUT
+# CHAT INPUT (กล่องพิมพ์ข้อความด้านล่าง พร้อมปุ่มส่งตามมาตรฐาน Streamlit)
 # =========================================================
 user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ...")
 
@@ -78,7 +92,7 @@ if user_input:
     with st.chat_message("user"):
         st.markdown(user_input)
 
-    # 2. จัดเตรียมคำถามที่จะส่งให้ AI (เช็คว่ามีไฟล์แนบไหม)
+    # 2. จัดเตรียมคำถามที่จะส่งให้ AI (เช็คว่ามีไฟล์แนบใน Sidebar ไหม)
     final_prompt = user_input
     
     if uploaded_file is not None:
@@ -97,10 +111,10 @@ if user_input:
                     if text:
                         file_content += text + "\n"
             
-            # ป้องกันข้อความยาวเกินไปจนแชทพัง (ตัดรับแค่ 5000 ตัวอักษรแรก)
+            # ป้องกันข้อความยาวเกินไป (ตัดรับแค่ 5000 ตัวอักษรแรก)
             file_content = file_content[:5000] 
             
-            # รวมไฟล์เข้ากับคำถามอย่างแนบเนียน
+            # รวมเนื้อหาไฟล์เข้ากับคำถาม
             final_prompt = (
                 f"อ้างอิงข้อมูลจากไฟล์ที่แนบมานี้:\n"
                 f"-------------------\n{file_content}\n-------------------\n\n"
@@ -113,7 +127,6 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังวิเคราะห์ข้อมูลและหาคำตอบ..."):
             try:
-                # ส่ง final_prompt ที่อาจจะรวมเนื้อหาไฟล์ไว้แล้วไปให้ AI
                 answer = asyncio.run(get_answer(final_prompt))
                 st.markdown(answer)
                 st.session_state.messages.append({"role": "assistant", "content": answer})
