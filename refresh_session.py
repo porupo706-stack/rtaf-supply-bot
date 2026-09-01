@@ -20,19 +20,9 @@ from cryptography.fernet import Fernet
 # ⚙️ CONFIG — แก้ค่าเหล่านี้เพียงครั้งเดียว
 # =========================================================
 
-GITHUB_TOKEN = "ghp_XXXXXXXXXXXXXXXXXXXX"
-# วิธีสร้าง: github.com → Settings → Developer settings
-#            → Personal access tokens → Tokens (classic)
-#            → Generate new token → ติ๊กแค่ "gist" → Copy
-
-GIST_ID = "XXXXXXXXXXXXXXXXXXXX"
-# วิธีสร้าง: gist.github.com → New gist
-#            → ใส่ชื่อไฟล์ "session.enc" → ใส่ข้อความอะไรก็ได้
-#            → Create secret gist
-#            → copy ID จาก URL: gist.github.com/username/[GIST_ID]
-
-ENCRYPTION_KEY = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX="
-# ได้จากการรัน generate_key.py
+GITHUB_TOKEN = "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"
+GIST_ID      = "8dd7ad0f0c224fa060f85a95d4657353"
+ENCRYPTION_KEY = "9k0Lj8deI4ocNsbHoNXwSdoNGDc8cCsqDdIG4CYgdRg="
 
 # =========================================================
 # ห้ามแก้ด้านล่างนี้
