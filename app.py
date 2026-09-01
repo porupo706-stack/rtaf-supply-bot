@@ -14,50 +14,58 @@ NOTEBOOK_ID = "53c42aa4-91a9-46b0-9094-2b480d0f0c5f"
 # PAGE CONFIG
 # =========================================================
 st.set_page_config(
-    page_title="ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)",
+    page_title="RTAF Chat Assistant | ศูนย์บริการข้อมูลงานพัสดุ",
     page_icon="✈️",
     layout="centered",
 )
 
-# --- เพิ่มโค้ดส่วนนี้เพื่อเปลี่ยนสีขอบ Chat Input เป็นสีเขียว ---
+# --- ปรับแต่ง UI ด้วย Custom CSS (สไตล์ Modern & Minimalist) ---
 st.markdown("""
 <style>
-/* เปลี่ยนสีขอบเมื่อไม่ได้โฟกัส (สีเขียวปกติ) และปรับขอบให้มน */
-div[data-testid="stChatInput"] {
-    border-color: #4CAF50 !important; 
-    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เพื่อให้ขอบมน */
+/* ซ่อน Header เมนู (ปุ่ม 3 จุด มุมขวาบน) และ Footer ของ Streamlit เพื่อความสะอาดตา */
+#MainMenu {visibility: hidden;}
+header {visibility: hidden;}
+footer {visibility: hidden;}
+
+/* เปลี่ยนพื้นหลังหลักให้เป็นสีเทาขาวสว่างๆ */
+.stApp {
+    background-color: #F8F9FA;
 }
-/* เปลี่ยนสีขอบเวลาคลิกพิมพ์ (สีเขียวเข้ม และลบเงาสีแดง) */
+
+/* เปลี่ยนสีขอบช่องแชทจากสีเขียว เป็นสีน้ำเงิน ทอ. และปรับให้ขอบมน */
+div[data-testid="stChatInput"] {
+    border-color: #004B87 !important; 
+    border-radius: 1rem !important; 
+    background-color: #FFFFFF !important;
+}
 div[data-testid="stChatInput"]:focus-within,
 div[data-testid="stChatInput"] > div:focus-within {
-    border-color: #2E7D32 !important; 
-    box-shadow: 0 0 0 1px #2E7D32 !important;
-    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เผื่อตอนโฟกัส */
+    border-color: #004B87 !important; 
+    box-shadow: 0 0 0 1.5px #004B87 !important;
+    border-radius: 1rem !important; 
 }
 </style>
+
+<!-- ส่วน Header โลโก้และชื่อแอป จัดกึ่งกลาง -->
+<div style="text-align: center; margin-top: -3rem; margin-bottom: 2rem;">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/e/e5/Seal_of_the_Royal_Thai_Air_Force.svg" width="110" alt="RTAF Logo" style="margin-bottom: 15px;">
+    <h2 style="color: #004B87; font-weight: 800; font-family: sans-serif; margin-bottom: 0px;">RTAF CHAT ASSISTANT</h2>
+    <p style="color: #6C757D; font-size: 1.1rem; margin-top: 5px;">ศูนย์บริการข้อมูลงานพัสดุออนไลน์ | กองทัพอากาศ</p>
+</div>
 """, unsafe_allow_html=True)
 
-# =========================================================
-# HEADER
-# =========================================================
-st.subheader("✈️ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)")
-st.caption("ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ ขับเคลื่อนด้วย NotebookLM")
 
 # =========================================================
 # ดึง session จาก GitHub Gist (cache 1 ชั่วโมง)
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_from_gist() -> str | None:
-    """
-    ดึง session ที่เข้ารหัสจาก GitHub Gist แล้วถอดรหัส
-    คืนค่า: JSON string ของ storage_state  หรือ None ถ้าล้มเหลว
-    """
     gist_id    = st.secrets.get("GIST_ID", "")
     gh_token   = st.secrets.get("GITHUB_TOKEN", "")
     enc_key    = st.secrets.get("SESSION_ENC_KEY", "")
 
     if not all([gist_id, gh_token, enc_key]):
-        return None  # ยังไม่ได้ตั้งค่า Gist → ข้ามไป fallback
+        return None  
 
     try:
         resp = req.get(
@@ -74,20 +82,12 @@ def fetch_from_gist() -> str | None:
     except (InvalidToken, KeyError, Exception):
         return None
 
-
 # =========================================================
-# ตั้งค่า Auth (ลำดับ: Gist → Streamlit Secrets เดิม)
+# ตั้งค่า Auth
 # =========================================================
 def setup_auth() -> bool:
-    """
-    พยายามเซ็ต NOTEBOOKLM_AUTH_JSON ใน env
-    1. ดึงจาก GitHub Gist (ถ้าตั้งค่าไว้)
-    2. Fallback: อ่านจาก Streamlit Secrets NOTEBOOKLM_AUTH_JSON แบบเดิม
-    """
-    # วิธีที่ 1: GitHub Gist (session ล่าสุด)
     auth_json = fetch_from_gist()
 
-    # วิธีที่ 2: Streamlit Secrets แบบเดิม
     if not auth_json:
         try:
             auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
@@ -100,17 +100,13 @@ def setup_auth() -> bool:
     os.environ["NOTEBOOKLM_AUTH_JSON"] = auth_json
     return True
 
-
 def is_auth_error(e: Exception) -> bool:
     keywords = ["auth", "login", "credential", "unauthorized",
                 "403", "session", "google", "oauth", "token", "invalid"]
     return any(kw in str(e).lower() for kw in keywords)
 
-
 def clear_gist_cache():
-    """ล้าง cache เพื่อบังคับดึง session ใหม่จาก Gist"""
     fetch_from_gist.clear()
-
 
 # =========================================================
 # NOTEBOOKLM
@@ -119,7 +115,6 @@ async def get_answer(prompt: str) -> str:
     async with NotebookLMClient.from_storage() as client:
         result = await client.chat.ask(NOTEBOOK_ID, prompt)
         return result.answer
-
 
 # =========================================================
 # หน้า "Session หมดอายุ"
@@ -149,7 +144,6 @@ if st.session_state.get("auth_expired", False):
             st.rerun()
     st.stop()
 
-
 # =========================================================
 # ตรวจ auth
 # =========================================================
@@ -162,7 +156,6 @@ if not setup_auth():
         st.rerun()
     st.stop()
 
-
 # =========================================================
 # CHAT HISTORY
 # =========================================================
@@ -173,11 +166,10 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-
 # =========================================================
 # CHAT INPUT
 # =========================================================
-user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ...")
+user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับระเบียบและงานพัสดุ...")
 
 if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
@@ -185,7 +177,7 @@ if user_input:
         st.markdown(user_input)
 
     with st.chat_message("assistant"):
-        with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
+        with st.spinner("🔎 กำลังค้นหาข้อมูลระเบียบจากฐานความรู้..."):
             try:
                 answer = asyncio.run(get_answer(user_input))
                 st.markdown(answer)
