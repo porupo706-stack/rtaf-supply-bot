@@ -1,0 +1,7 @@
+streamlit
+notebooklm-py[browser]
+playwright
+PyPDF2
+pandas
+requests
+cryptography
