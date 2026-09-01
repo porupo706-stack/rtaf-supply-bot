@@ -19,6 +19,22 @@ st.set_page_config(
     layout="centered",
 )
 
+# --- เพิ่มโค้ดส่วนนี้เพื่อเปลี่ยนสีขอบ Chat Input เป็นสีเขียว ---
+st.markdown("""
+<style>
+/* เปลี่ยนสีขอบเมื่อไม่ได้โฟกัส (สีเขียวปกติ) */
+div[data-testid="stChatInput"] {
+    border-color: #4CAF50 !important; 
+}
+/* เปลี่ยนสีขอบเวลาคลิกพิมพ์ (สีเขียวเข้ม และลบเงาสีแดง) */
+div[data-testid="stChatInput"]:focus-within,
+div[data-testid="stChatInput"] > div:focus-within {
+    border-color: #2E7D32 !important; 
+    box-shadow: 0 0 0 1px #2E7D32 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # =========================================================
 # HEADER
 # =========================================================
