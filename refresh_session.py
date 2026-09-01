@@ -20,9 +20,9 @@ from cryptography.fernet import Fernet
 # ⚙️ CONFIG — แก้ค่าเหล่านี้เพียงครั้งเดียว
 # =========================================================
 
-GITHUB_TOKEN = "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"
-GIST_ID      = "8dd7ad0f0c224fa060f85a95d4657353"
-ENCRYPTION_KEY = "9k0Lj8deI4ocNsbHoNXwSdoNGDc8cCsqDdIG4CYgdRg="
+GITHUB_TOKEN   = "YOUR_GITHUB_TOKEN_HERE"
+GIST_ID        = "YOUR_GIST_ID_HERE"
+ENCRYPTION_KEY = "YOUR_ENCRYPTION_KEY_HERE"
 
 # =========================================================
 # ห้ามแก้ด้านล่างนี้
