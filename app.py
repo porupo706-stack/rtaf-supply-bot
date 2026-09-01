@@ -22,15 +22,17 @@ st.set_page_config(
 # --- เพิ่มโค้ดส่วนนี้เพื่อเปลี่ยนสีขอบ Chat Input เป็นสีเขียว ---
 st.markdown("""
 <style>
-/* เปลี่ยนสีขอบเมื่อไม่ได้โฟกัส (สีเขียวปกติ) */
+/* เปลี่ยนสีขอบเมื่อไม่ได้โฟกัส (สีเขียวปกติ) และปรับขอบให้มน */
 div[data-testid="stChatInput"] {
     border-color: #4CAF50 !important; 
+    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เพื่อให้ขอบมน */
 }
 /* เปลี่ยนสีขอบเวลาคลิกพิมพ์ (สีเขียวเข้ม และลบเงาสีแดง) */
 div[data-testid="stChatInput"]:focus-within,
 div[data-testid="stChatInput"] > div:focus-within {
     border-color: #2E7D32 !important; 
     box-shadow: 0 0 0 1px #2E7D32 !important;
+    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เผื่อตอนโฟกัส */
 }
 </style>
 """, unsafe_allow_html=True)
