@@ -6,9 +6,9 @@ from notebooklm import NotebookLMClient
 from cryptography.fernet import Fernet, InvalidToken
 
 # =========================================================
-# CONFIG
+# CONFIG — ดึงจาก Secrets ทั้งหมด (ไม่มีข้อมูลสำคัญใน code)
 # =========================================================
-NOTEBOOK_ID = "53c42aa4-91a9-46b0-9094-2b480d0f0c5f"
+NOTEBOOK_ID = st.secrets.get("NOTEBOOK_ID", "")
 
 # =========================================================
 # PAGE CONFIG
@@ -19,20 +19,17 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- เพิ่มโค้ดส่วนนี้เพื่อเปลี่ยนสีขอบ Chat Input เป็นสีเขียว ---
 st.markdown("""
 <style>
-/* เปลี่ยนสีขอบเมื่อไม่ได้โฟกัส (สีเขียวปกติ) และปรับขอบให้มน */
 div[data-testid="stChatInput"] {
-    border-color: #4CAF50 !important; 
-    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เพื่อให้ขอบมน */
+    border-color: #4CAF50 !important;
+    border-radius: 0.5rem !important;
 }
-/* เปลี่ยนสีขอบเวลาคลิกพิมพ์ (สีเขียวเข้ม และลบเงาสีแดง) */
 div[data-testid="stChatInput"]:focus-within,
 div[data-testid="stChatInput"] > div:focus-within {
-    border-color: #2E7D32 !important; 
+    border-color: #2E7D32 !important;
     box-shadow: 0 0 0 1px #2E7D32 !important;
-    border-radius: 0.5rem !important; /* <-- เพิ่มบรรทัดนี้เผื่อตอนโฟกัส */
+    border-radius: 0.5rem !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -48,16 +45,12 @@ st.caption("ระบบถาม–ตอบระเบียบและเ�
 # =========================================================
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_from_gist() -> str | None:
-    """
-    ดึง session ที่เข้ารหัสจาก GitHub Gist แล้วถอดรหัส
-    คืนค่า: JSON string ของ storage_state  หรือ None ถ้าล้มเหลว
-    """
-    gist_id    = st.secrets.get("GIST_ID", "")
-    gh_token   = st.secrets.get("GITHUB_TOKEN", "")
-    enc_key    = st.secrets.get("SESSION_ENC_KEY", "")
+    gist_id  = st.secrets.get("GIST_ID", "")
+    gh_token = st.secrets.get("GITHUB_TOKEN", "")
+    enc_key  = st.secrets.get("SESSION_ENC_KEY", "")
 
     if not all([gist_id, gh_token, enc_key]):
-        return None  # ยังไม่ได้ตั้งค่า Gist → ข้ามไป fallback
+        return None
 
     try:
         resp = req.get(
@@ -76,18 +69,11 @@ def fetch_from_gist() -> str | None:
 
 
 # =========================================================
-# ตั้งค่า Auth (ลำดับ: Gist → Streamlit Secrets เดิม)
+# ตั้งค่า Auth
 # =========================================================
 def setup_auth() -> bool:
-    """
-    พยายามเซ็ต NOTEBOOKLM_AUTH_JSON ใน env
-    1. ดึงจาก GitHub Gist (ถ้าตั้งค่าไว้)
-    2. Fallback: อ่านจาก Streamlit Secrets NOTEBOOKLM_AUTH_JSON แบบเดิม
-    """
-    # วิธีที่ 1: GitHub Gist (session ล่าสุด)
     auth_json = fetch_from_gist()
 
-    # วิธีที่ 2: Streamlit Secrets แบบเดิม
     if not auth_json:
         try:
             auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
@@ -108,9 +94,16 @@ def is_auth_error(e: Exception) -> bool:
 
 
 def clear_gist_cache():
-    """ล้าง cache เพื่อบังคับดึง session ใหม่จาก Gist"""
     fetch_from_gist.clear()
 
+
+# =========================================================
+# ตรวจ NOTEBOOK_ID
+# =========================================================
+if not NOTEBOOK_ID:
+    st.error("⚠️ ไม่พบ NOTEBOOK_ID ใน Streamlit Secrets")
+    st.info("กรุณาเพิ่ม NOTEBOOK_ID = '...' ใน App settings → Secrets")
+    st.stop()
 
 # =========================================================
 # NOTEBOOKLM
@@ -133,8 +126,6 @@ if st.session_state.get("auth_expired", False):
 2. Login Google บน browser ที่เปิดขึ้นมา
 3. รอจนขึ้นว่า "สำเร็จ"
 4. กดปุ่ม **"รีเฟรช"** ด้านล่าง
-
-> ไม่ต้องแตะ Streamlit Secrets อีกแล้ว ✅
 """)
     col1, col2 = st.columns(2)
     with col1:
@@ -155,8 +146,7 @@ if st.session_state.get("auth_expired", False):
 # =========================================================
 if not setup_auth():
     st.error("⚠️ ยังไม่ได้ตั้งค่า NotebookLM Authentication")
-    st.info("กรุณาตั้งค่า **NOTEBOOKLM_AUTH_JSON** ใน Streamlit Secrets\n\n"
-            "หรือตั้งค่า GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY แล้วรัน refresh_session.bat")
+    st.info("กรุณาตั้งค่า GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY ใน Secrets")
     if st.button("🔄 ลองใหม่", use_container_width=True):
         clear_gist_cache()
         st.rerun()
