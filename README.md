@@ -1,1 +1,242 @@
-https://rtaf-supply.streamlit.app/
+══════════════════════════════════════════════════════════════════
+   คู่มือติดตั้งระบบ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)
+   https://rtaf-supply.streamlit.app/
+══════════════════════════════════════════════════════════════════
+
+ระบบนี้ใช้ NotebookLM เป็น AI ตอบคำถาม ผ่าน Streamlit Cloud
+เมื่อติดตั้งเสร็จ ผู้ใช้ทุกคนเข้าใช้งานผ่าน URL ได้ทันที
+โดยไม่ต้องติดตั้งอะไรในเครื่องตัวเอง
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 1 : สิ่งที่ต้องมีก่อน
+──────────────────────────────────────────────────────────────────
+
+[ ] Python 3.10+ ติดตั้งในเครื่อง
+[ ] บัญชี GitHub (github.com)
+[ ] บัญชี Streamlit Cloud (streamlit.io)
+[ ] บัญชี Google ที่มีสิทธิ์เข้า NotebookLM
+[ ] NotebookLM Notebook ที่อัปโหลดเอกสารพัสดุไว้แล้ว
+    → จด NOTEBOOK_ID ไว้ (ได้จาก URL ของ Notebook)
+    → ตัวอย่าง: 53c42aa4-91a9-46b0-9094-2b480d0f0c5f
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 2 : ติดตั้ง notebooklm-py ในเครื่อง
+──────────────────────────────────────────────────────────────────
+
+เปิด PowerShell หรือ Command Prompt แล้วรัน:
+
+  pip install notebooklm-py[browser]
+  playwright install chromium
+
+จากนั้น login Google ครั้งแรก:
+
+  python -m notebooklm login
+
+  → browser จะเปิดขึ้น → login บัญชี Google
+  → รอขึ้น "Authentication saved to: ...storage_state.json"
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 3 : สร้าง GitHub Repository
+──────────────────────────────────────────────────────────────────
+
+1. เข้า github.com → New repository
+2. ตั้งชื่อ เช่น "rtaf-supply-bot"
+3. เลือก Public หรือ Private
+4. สร้างไฟล์ในเครื่อง แล้ว push ขึ้น GitHub
+
+   ไฟล์ที่ต้องมีใน Repository:
+   ├── app.py           ← โค้ดหลักของแอป
+   ├── requirements.txt ← รายการ package
+   └── .devcontainer/   ← (อัตโนมัติจาก Streamlit)
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 4 : เนื้อหาไฟล์ requirements.txt
+──────────────────────────────────────────────────────────────────
+
+streamlit
+notebooklm-py[browser]
+playwright
+PyPDF2
+pandas
+requests
+cryptography
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 5 : เนื้อหาไฟล์ app.py
+──────────────────────────────────────────────────────────────────
+
+(ดูไฟล์ app.py ที่แนบมาพร้อมคู่มือนี้)
+
+จุดสำคัญใน app.py:
+- NOTEBOOK_ID = "ใส่ ID ของ Notebook คุณ"
+- ระบบดึง session จาก GitHub Gist อัตโนมัติ
+- มีหน้า "Session หมดอายุ" พร้อมคำแนะนำ
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 6 : สร้าง GitHub Gist (เก็บ session เข้ารหัส)
+──────────────────────────────────────────────────────────────────
+
+1. เข้า gist.github.com
+2. กรอก:
+   - Gist description: RTAF session storage (หรืออะไรก็ได้)
+   - Filename: session.enc   ← ต้องตรงนี้เท่านั้น!
+   - Content: placeholder
+3. กด "Create secret gist"
+4. copy GIST_ID จาก URL:
+   gist.github.com/username/[GIST_ID ตรงนี้]
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 7 : สร้าง GitHub Personal Access Token
+──────────────────────────────────────────────────────────────────
+
+1. เข้า github.com → Settings → Developer settings
+2. Personal access tokens → Tokens (classic)
+3. Generate new token (classic)
+4. ตั้งชื่อ: rtaf-supply-token
+5. ติ๊กแค่ "gist" เท่านั้น!
+6. Generate token → copy ทันที (แสดงแค่ครั้งเดียว!)
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 8 : สร้าง Encryption Key
+──────────────────────────────────────────────────────────────────
+
+รันไฟล์ generate_key.py ในเครื่อง:
+
+  python generate_key.py
+
+→ copy key ที่แสดงออกมา เก็บไว้ให้ดี!
+→ ตัวอย่าง: 9k0Lj8deI4ocNsbHoNXwSdoNGDc8cCsqDdIG4CYgdRg=
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 9 : ตั้งค่า Streamlit Cloud
+──────────────────────────────────────────────────────────────────
+
+1. เข้า streamlit.io → New app
+2. เชื่อมต่อ GitHub Repository ที่สร้างไว้
+3. Deploy แอป
+4. เข้า App settings → Secrets
+5. ใส่ค่าดังนี้:
+
+   GIST_ID = "ใส่ GIST_ID จากส่วนที่ 6"
+   GITHUB_TOKEN = "ghp_ใส่ token จากส่วนที่ 7"
+   SESSION_ENC_KEY = "ใส่ key จากส่วนที่ 8"
+
+6. กด Save → Streamlit จะ redeploy อัตโนมัติ
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 10 : ตั้งค่าไฟล์ในเครื่อง
+──────────────────────────────────────────────────────────────────
+
+สร้าง folder สำหรับเก็บไฟล์ทั้งหมด เช่น:
+  D:\ระบบ RTAF Supply Chatbot\
+
+ไฟล์ที่ต้องมีใน folder นี้:
+  ├── app.py
+  ├── auto_refresh.py       ← แก้ไข 3 บรรทัดแรก
+  ├── generate_key.py
+  ├── refresh_session.bat
+  ├── refresh_session.py    ← แก้ไข 3 บรรทัดแรก
+  ├── requirements.txt
+  ├── start_auto_refresh.bat
+  ├── start_silent.vbs
+  └── stop_silent.bat
+
+แก้ไข refresh_session.py บรรทัดที่ 23-25:
+
+  GITHUB_TOKEN   = "ghp_ใส่ token ของคุณ"
+  GIST_ID        = "ใส่ GIST_ID ของคุณ"
+  ENCRYPTION_KEY = "ใส่ key จาก generate_key.py"
+
+แก้ไข auto_refresh.py บรรทัดที่ 23-25:
+  (ใส่ค่าเดียวกับ refresh_session.py)
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 11 : รันครั้งแรก
+──────────────────────────────────────────────────────────────────
+
+ขั้นที่ 1 : ทดสอบ login
+  double-click refresh_session.bat
+  → browser เปิด → login Google → รอ "✅ สำเร็จ"
+
+ขั้นที่ 2 : ตั้งให้รันอัตโนมัติตอนเปิดเครื่อง
+  กด Win + R → พิมพ์ shell:startup → Enter
+  → สร้าง Shortcut ของ start_silent.vbs วางไว้ในนั้น
+
+ขั้นที่ 3 : รัน auto_refresh ทันที
+  double-click start_silent.vbs
+
+ขั้นที่ 4 : ตรวจสอบว่ารันอยู่
+  เปิด Task Manager → Details → หา pythonw.exe
+  ถ้าเห็น = ✅ ทำงานอยู่
+
+ขั้นที่ 5 : เปิดแอปแล้วกดรีเฟรช
+  เข้า https://rtaf-supply.streamlit.app/
+  กดปุ่ม "🔄 รีเฟรช" (ถ้ามี)
+  → ทดสอบพิมพ์คำถาม
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 12 : การทำงานปกติของระบบ (หลังติดตั้งเสร็จ)
+──────────────────────────────────────────────────────────────────
+
+  เปิดเครื่อง Windows
+      ↓
+  start_silent.vbs รันอัตโนมัติ (ไม่มีหน้าต่าง)
+      ↓
+  auto_refresh.py ทำงานเบื้องหลัง:
+    • ทุก 3 นาที  → อัปโหลด session → GitHub Gist
+    • ทุก 30 นาที → Ping NotebookLM → ต่ออายุ Google session
+      ↓
+  Streamlit Cloud ดึง session จาก Gist
+      ↓
+  ผู้ใช้ทุกคนใช้งานได้ปกติ ✅
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 13 : การบำรุงรักษา
+──────────────────────────────────────────────────────────────────
+
+สถานการณ์              │ สิ่งที่ต้องทำ
+───────────────────────┼──────────────────────────────────
+ปิด/เปิดเครื่องใหม่   │ ไม่ต้องทำอะไร (auto-start)
+ผู้ใช้ใช้แอปปกติ       │ ไม่ต้องทำอะไร
+แอปขึ้น session หมด   │ double-click refresh_session.bat
+  (นานๆ ครั้ง)         │ → login Google → กดรีเฟรชในแอป
+ย้ายไปเครื่องใหม่     │ copy folder ทั้งหมด
+                       │ → ลง Python + notebooklm-py
+                       │ → double-click refresh_session.bat
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 14 : การย้ายไปรันในเครื่องอื่น
+──────────────────────────────────────────────────────────────────
+
+เครื่องใหม่ต้องมี:
+  [ ] Python 3.10+ ติดตั้งแล้ว
+  [ ] รัน: pip install notebooklm-py[browser] cryptography requests
+  [ ] รัน: playwright install chromium
+  [ ] copy folder ทั้งหมดมาวาง
+  [ ] double-click refresh_session.bat (login Google ครั้งแรก)
+  [ ] ตั้ง start_silent.vbs ใน shell:startup
+
+หมายเหตุ: ค่า GIST_ID, GITHUB_TOKEN, ENCRYPTION_KEY
+ใช้อันเดิมได้เลย ไม่ต้องสร้างใหม่
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 15 : สรุปไฟล์และหน้าที่
+──────────────────────────────────────────────────────────────────
+
+ไฟล์                    │ หน้าที่
+────────────────────────┼─────────────────────────────────────
+app.py                  │ โค้ดแอป Streamlit Cloud
+requirements.txt        │ Python packages สำหรับ Streamlit
+generate_key.py         │ สร้าง encryption key (รันครั้งเดียว)
+refresh_session.py      │ login Google + อัปโหลด Gist
+refresh_session.bat     │ เปิด refresh_session.py ง่ายๆ
+auto_refresh.py         │ รันเบื้องหลัง อัปโหลดทุก 3 นาที
+                        │ + ping ทุก 30 นาที
+start_silent.vbs        │ เริ่ม auto_refresh ไม่มีหน้าต่าง
+stop_silent.bat         │ หยุด auto_refresh
+start_auto_refresh.bat  │ เริ่ม auto_refresh มีหน้าต่าง (debug)
+
+══════════════════════════════════════════════════════════════════
+   จัดทำโดย: พ.อ.อ.กนก คงสีทอง
+   URL: https://rtaf-supply.streamlit.app/
+══════════════════════════════════════════════════════════════════
