@@ -17,7 +17,7 @@
 [ ] บัญชี Google ที่มีสิทธิ์เข้า NotebookLM
 [ ] NotebookLM Notebook ที่อัปโหลดเอกสารพัสดุไว้แล้ว
     → จด NOTEBOOK_ID ไว้ (ได้จาก URL ของ Notebook)
-    → ตัวอย่าง: 53c42aa4-91a9-46b0-9094-2b480d0f0c5f
+    → ตัวอย่าง URL: notebook.google.com/notebook/[NOTEBOOK_ID]
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 2 : ติดตั้ง notebooklm-py ในเครื่อง
@@ -25,7 +25,7 @@
 
 เปิด PowerShell หรือ Command Prompt แล้วรัน:
 
-  pip install notebooklm-py[browser]
+  pip install notebooklm-py[browser] cryptography requests
   playwright install chromium
 
 จากนั้น login Google ครั้งแรก:
@@ -68,9 +68,10 @@ cryptography
 (ดูไฟล์ app.py ที่แนบมาพร้อมคู่มือนี้)
 
 จุดสำคัญใน app.py:
-- NOTEBOOK_ID = "ใส่ ID ของ Notebook คุณ"
+- ข้อมูลสำคัญทั้งหมด (NOTEBOOK_ID, GIST_ID ฯลฯ) ถูกซ่อนไว้
+  ใน Streamlit Secrets ทั้งหมด ไม่มีในโค้ด
 - ระบบดึง session จาก GitHub Gist อัตโนมัติ
-- มีหน้า "Session หมดอายุ" พร้อมคำแนะนำ
+- มีหน้า "Session หมดอายุ" พร้อมคำแนะนำสำหรับผู้ดูแล
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 6 : สร้าง GitHub Gist (เก็บ session เข้ารหัส)
@@ -79,9 +80,9 @@ cryptography
 1. เข้า gist.github.com
 2. กรอก:
    - Gist description: RTAF session storage (หรืออะไรก็ได้)
-   - Filename: session.enc   ← ต้องตรงนี้เท่านั้น!
-   - Content: placeholder
-3. กด "Create secret gist"
+   - Filename: session.enc   ← ต้องชื่อนี้เท่านั้น!
+   - Content: placeholder    ← ใส่คำนี้ไปก่อน
+3. กด "Create secret gist"   ← ต้องเลือก secret ไม่ใช่ public
 4. copy GIST_ID จาก URL:
    gist.github.com/username/[GIST_ID ตรงนี้]
 
@@ -91,9 +92,9 @@ cryptography
 
 1. เข้า github.com → Settings → Developer settings
 2. Personal access tokens → Tokens (classic)
-3. Generate new token (classic)
+3. กดลูกศร ▼ ข้างปุ่ม → Generate new token (classic)
 4. ตั้งชื่อ: rtaf-supply-token
-5. ติ๊กแค่ "gist" เท่านั้น!
+5. ติ๊กแค่ "gist" เท่านั้น! ห้ามติ๊กอื่น
 6. Generate token → copy ทันที (แสดงแค่ครั้งเดียว!)
 
 ──────────────────────────────────────────────────────────────────
@@ -104,27 +105,31 @@ cryptography
 
   python generate_key.py
 
-→ copy key ที่แสดงออกมา เก็บไว้ให้ดี!
+→ copy key ที่แสดงออกมา เก็บไว้ให้ดี อย่าให้ใครรู้!
 → ตัวอย่าง: 9k0Lj8deI4ocNsbHoNXwSdoNGDc8cCsqDdIG4CYgdRg=
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 9 : ตั้งค่า Streamlit Cloud
+ส่วนที่ 9 : ตั้งค่า Streamlit Cloud Secrets
 ──────────────────────────────────────────────────────────────────
 
 1. เข้า streamlit.io → New app
 2. เชื่อมต่อ GitHub Repository ที่สร้างไว้
 3. Deploy แอป
 4. เข้า App settings → Secrets
-5. ใส่ค่าดังนี้:
+5. ใส่ค่าดังนี้ครบทุกบรรทัด:
 
-   GIST_ID = "ใส่ GIST_ID จากส่วนที่ 6"
-   GITHUB_TOKEN = "ghp_ใส่ token จากส่วนที่ 7"
+   NOTEBOOK_ID     = "ใส่ NOTEBOOK_ID จาก URL ของ NotebookLM"
+   GIST_ID         = "ใส่ GIST_ID จากส่วนที่ 6"
+   GITHUB_TOKEN    = "ghp_ใส่ token จากส่วนที่ 7"
    SESSION_ENC_KEY = "ใส่ key จากส่วนที่ 8"
 
 6. กด Save → Streamlit จะ redeploy อัตโนมัติ
 
+หมายเหตุ: ข้อมูลใน Secrets จะถูกเข้ารหัสและซ่อนจากผู้ใช้ทั่วไป
+          แม้แต่ผู้ที่เห็น code ใน GitHub ก็ไม่สามารถดูได้
+
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 10 : ตั้งค่าไฟล์ในเครื่อง
+ส่วนที่ 10 : ตั้งค่าไฟล์ในเครื่อง (Local Machine)
 ──────────────────────────────────────────────────────────────────
 
 สร้าง folder สำหรับเก็บไฟล์ทั้งหมด เช่น:
@@ -132,47 +137,46 @@ cryptography
 
 ไฟล์ที่ต้องมีใน folder นี้:
   ├── app.py
-  ├── auto_refresh.py       ← แก้ไข 3 บรรทัดแรก
+  ├── auto_refresh.py        ← แก้ไข 3 บรรทัดแรก (ส่วน CONFIG)
   ├── generate_key.py
   ├── refresh_session.bat
-  ├── refresh_session.py    ← แก้ไข 3 บรรทัดแรก
+  ├── refresh_session.py     ← แก้ไข 3 บรรทัดแรก (ส่วน CONFIG)
   ├── requirements.txt
   ├── start_auto_refresh.bat
   ├── start_silent.vbs
   └── stop_silent.bat
 
-แก้ไข refresh_session.py บรรทัดที่ 23-25:
+แก้ไข refresh_session.py และ auto_refresh.py
+หาส่วน CONFIG แล้วใส่ค่า:
 
   GITHUB_TOKEN   = "ghp_ใส่ token ของคุณ"
   GIST_ID        = "ใส่ GIST_ID ของคุณ"
   ENCRYPTION_KEY = "ใส่ key จาก generate_key.py"
 
-แก้ไข auto_refresh.py บรรทัดที่ 23-25:
-  (ใส่ค่าเดียวกับ refresh_session.py)
-
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 11 : รันครั้งแรก
 ──────────────────────────────────────────────────────────────────
 
-ขั้นที่ 1 : ทดสอบ login
+ขั้นที่ 1 : อัปโหลด session ขึ้น Gist ครั้งแรก
   double-click refresh_session.bat
-  → browser เปิด → login Google → รอ "✅ สำเร็จ"
+  → browser เปิด (ถ้ายังไม่ได้ login จะให้ login Google)
+  → รอขึ้น "✅ สำเร็จ! แอปจะดึง session ใหม่อัตโนมัติ"
+  → กด Enter เพื่อปิด
 
 ขั้นที่ 2 : ตั้งให้รันอัตโนมัติตอนเปิดเครื่อง
   กด Win + R → พิมพ์ shell:startup → Enter
-  → สร้าง Shortcut ของ start_silent.vbs วางไว้ในนั้น
+  → copy Shortcut ของ start_silent.vbs วางไว้ในนั้น
 
-ขั้นที่ 3 : รัน auto_refresh ทันที
+ขั้นที่ 3 : เริ่ม auto_refresh ทันที (ไม่ต้องรอ reboot)
   double-click start_silent.vbs
 
 ขั้นที่ 4 : ตรวจสอบว่ารันอยู่
-  เปิด Task Manager → Details → หา pythonw.exe
-  ถ้าเห็น = ✅ ทำงานอยู่
+  เปิด Task Manager → Tab Details → หา pythonw.exe
+  ถ้าเห็น pythonw.exe = ✅ ทำงานอยู่
 
-ขั้นที่ 5 : เปิดแอปแล้วกดรีเฟรช
+ขั้นที่ 5 : ทดสอบแอป
   เข้า https://rtaf-supply.streamlit.app/
-  กดปุ่ม "🔄 รีเฟรช" (ถ้ามี)
-  → ทดสอบพิมพ์คำถาม
+  กดปุ่ม "🔄 รีเฟรช" (ถ้ามี) → ทดสอบพิมพ์คำถาม
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 12 : การทำงานปกติของระบบ (หลังติดตั้งเสร็จ)
@@ -194,15 +198,13 @@ cryptography
 ส่วนที่ 13 : การบำรุงรักษา
 ──────────────────────────────────────────────────────────────────
 
-สถานการณ์              │ สิ่งที่ต้องทำ
-───────────────────────┼──────────────────────────────────
-ปิด/เปิดเครื่องใหม่   │ ไม่ต้องทำอะไร (auto-start)
-ผู้ใช้ใช้แอปปกติ       │ ไม่ต้องทำอะไร
-แอปขึ้น session หมด   │ double-click refresh_session.bat
-  (นานๆ ครั้ง)         │ → login Google → กดรีเฟรชในแอป
-ย้ายไปเครื่องใหม่     │ copy folder ทั้งหมด
-                       │ → ลง Python + notebooklm-py
-                       │ → double-click refresh_session.bat
+สถานการณ์               	│ สิ่งที่ต้องทำ
+────────────────────────────────────────────────────────────
+ปิด/เปิดเครื่องใหม่    		│ ไม่ต้องทำอะไร (auto-start)
+ผู้ใช้ใช้แอปปกติ        		│ ไม่ต้องทำอะไร
+แอปขึ้น session หมด    	│ double-click refresh_session.bat
+  (นานๆ ครั้ง)         	│ → login Google → กดรีเฟรชในแอป
+ย้ายไปเครื่องใหม่      		│ ดูส่วนที่ 14
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 14 : การย้ายไปรันในเครื่องอื่น
@@ -212,29 +214,45 @@ cryptography
   [ ] Python 3.10+ ติดตั้งแล้ว
   [ ] รัน: pip install notebooklm-py[browser] cryptography requests
   [ ] รัน: playwright install chromium
-  [ ] copy folder ทั้งหมดมาวาง
+  [ ] copy folder ทั้งหมดมาวาง (ค่า CONFIG ครบอยู่แล้ว)
   [ ] double-click refresh_session.bat (login Google ครั้งแรก)
-  [ ] ตั้ง start_silent.vbs ใน shell:startup
+  [ ] ตั้ง Shortcut ของ start_silent.vbs ใน shell:startup
+  [ ] double-click start_silent.vbs
 
 หมายเหตุ: ค่า GIST_ID, GITHUB_TOKEN, ENCRYPTION_KEY
 ใช้อันเดิมได้เลย ไม่ต้องสร้างใหม่
+Streamlit Secrets ก็ไม่ต้องแก้ไข
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 15 : สรุปไฟล์และหน้าที่
+ส่วนที่ 15 : ความปลอดภัยของระบบ
 ──────────────────────────────────────────────────────────────────
 
-ไฟล์                    │ หน้าที่
-────────────────────────┼─────────────────────────────────────
-app.py                  │ โค้ดแอป Streamlit Cloud
-requirements.txt        │ Python packages สำหรับ Streamlit
+ข้อมูล            		 เก็บอยู่ที่ไหน           			ใครเห็นได้
+──────────────────┼─────────────────────────┼───────────────
+NOTEBOOK_ID       │ Streamlit Secrets       │ ผู้ดูแลระบบ
+GIST_ID           │ Streamlit Secrets       │ ผู้ดูแลระบบ
+GITHUB_TOKEN      │ Streamlit Secrets       │ ผู้ดูแลระบบ
+SESSION_ENC_KEY   │ Streamlit Secrets       │ ผู้ดูแลระบบ
+Google Session    │ GitHub Gist (เข้ารหัส) 	  │ ผู้ดูแลระบบ
+Code (app.py)     │ GitHub (Public)         │ ทุกคน*
+
+*app.py ไม่มีข้อมูลสำคัญอยู่เลย ปลอดภัย
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 16 : สรุปไฟล์และหน้าที่
+──────────────────────────────────────────────────────────────────
+
+ไฟล์                    	│ หน้าที่
+────────────────────────┼──────────────────────────────────────
+app.py                  │ โค้ดแอป Streamlit Cloud (push GitHub)
+requirements.txt        │ Python packages (push GitHub)
 generate_key.py         │ สร้าง encryption key (รันครั้งเดียว)
-refresh_session.py      │ login Google + อัปโหลด Gist
-refresh_session.bat     │ เปิด refresh_session.py ง่ายๆ
-auto_refresh.py         │ รันเบื้องหลัง อัปโหลดทุก 3 นาที
-                        │ + ping ทุก 30 นาที
-start_silent.vbs        │ เริ่ม auto_refresh ไม่มีหน้าต่าง
+refresh_session.py      │ login Google + อัปโหลด session → Gist
+refresh_session.bat     │ เปิด refresh_session.py ด้วย 1 คลิก
+auto_refresh.py         │ รันเบื้องหลัง ทุก 3 นาที + 30 นาที
+start_silent.vbs        │ เริ่ม auto_refresh (ไม่มีหน้าต่าง)
 stop_silent.bat         │ หยุด auto_refresh
-start_auto_refresh.bat  │ เริ่ม auto_refresh มีหน้าต่าง (debug)
+start_auto_refresh.bat  │ เริ่ม auto_refresh (มีหน้าต่าง debug)
 
 ══════════════════════════════════════════════════════════════════
    จัดทำโดย: พ.อ.อ.กนก คงสีทอง
