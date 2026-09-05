@@ -1,2 +1,7 @@
-streamlit>=1.35.0
-google-genai>=1.0.0
+streamlit
+notebooklm-py[browser]
+playwright
+PyPDF2
+pandas
+requests
+cryptography
