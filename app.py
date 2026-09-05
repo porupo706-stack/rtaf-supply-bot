@@ -1,310 +1,192 @@
-# ════════════════════════════════════════════════════════════════════
-#  RTAF Supply Bot — app.py  v3.0
-#  ผู้ช่วยงานพัสดุ กองทัพอากาศ (ทอ.)
-#  จัดทำโดย พ.อ.อ.กนก คงสีทอง
-#  ใช้ google-genai (SDK ใหม่) + gemini-1.5-flash
-# ════════════════════════════════════════════════════════════════════
-
-import streamlit as st
 import os
-import glob
-import time
-from pathlib import Path
-from google import genai
-from google.genai import types
+import asyncio
+import streamlit as st
+import requests as req
+from notebooklm import NotebookLMClient
+from cryptography.fernet import Fernet, InvalidToken
 
-# ────────────────────────────────────────────────
-# 0. Page config (ต้องเป็น call แรกสุด)
-# ────────────────────────────────────────────────
+# =========================================================
+# CONFIG — ดึงจาก Secrets ทั้งหมด (ไม่มีข้อมูลสำคัญใน code)
+# =========================================================
+NOTEBOOK_ID = st.secrets.get("NOTEBOOK_ID", "")
+
+# =========================================================
+# PAGE CONFIG
+# =========================================================
 st.set_page_config(
-    page_title="ผู้ช่วยงานพัสดุ ทอ.",
+    page_title="ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)",
     page_icon="✈️",
     layout="centered",
-    initial_sidebar_state="expanded",
 )
 
-# ────────────────────────────────────────────────
-# 1. Custom CSS
-# ────────────────────────────────────────────────
 st.markdown("""
 <style>
-    .main-header {
-        background: linear-gradient(135deg, #1a237e 0%, #283593 50%, #1565c0 100%);
-        color: white;
-        padding: 1.2rem 1.5rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(26,35,126,0.3);
-    }
-    .main-header h1 { font-size: 1.6rem; margin: 0; font-weight: 700; }
-    .main-header p  { font-size: 0.85rem; margin: 0.3rem 0 0; opacity: 0.85; }
-    .stChatMessage { border-radius: 10px; }
-    [data-testid="stSidebar"] { background-color: #f0f4ff; }
-    .status-ok  { color: #2e7d32; font-weight: 600; }
-    .status-err { color: #c62828; font-weight: 600; }
-    .stButton button {
-        border-radius: 20px;
-        border: 1px solid #3f51b5;
-        color: #3f51b5;
-        background: white;
-        font-size: 0.82rem;
-        padding: 0.3rem 0.8rem;
-        transition: all 0.2s;
-    }
-    .stButton button:hover { background: #3f51b5; color: white; }
+div[data-testid="stChatInput"] {
+    border-color: #4CAF50 !important;
+    border-radius: 0.5rem !important;
+}
+div[data-testid="stChatInput"]:focus-within,
+div[data-testid="stChatInput"] > div:focus-within {
+    border-color: #2E7D32 !important;
+    box-shadow: 0 0 0 1px #2E7D32 !important;
+    border-radius: 0.5rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ────────────────────────────────────────────────
-# 2. API Key
-# ────────────────────────────────────────────────
-def get_api_key():
-    if "GEMINI_API_KEY" in st.secrets:
-        return st.secrets["GEMINI_API_KEY"]
-    return os.environ.get("GEMINI_API_KEY")
+# =========================================================
+# HEADER
+# =========================================================
+st.subheader("✈️ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)")
+st.caption("ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ")
 
-API_KEY = get_api_key()
+# =========================================================
+# ดึง session จาก GitHub Gist (cache 1 ชั่วโมง)
+# =========================================================
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_from_gist() -> str | None:
+    gist_id  = st.secrets.get("GIST_ID", "")
+    gh_token = st.secrets.get("GITHUB_TOKEN", "")
+    enc_key  = st.secrets.get("SESSION_ENC_KEY", "")
 
-if not API_KEY:
-    st.error("❌ ไม่พบ GEMINI_API_KEY — ตั้งค่าใน Streamlit Secrets")
+    if not all([gist_id, gh_token, enc_key]):
+        return None
+
+    try:
+        resp = req.get(
+            f"https://api.github.com/gists/{gist_id}",
+            headers={"Authorization": f"token {gh_token}"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return None
+
+        encrypted = resp.json()["files"]["session.enc"]["content"]
+        return Fernet(enc_key.encode()).decrypt(encrypted.encode()).decode()
+
+    except (InvalidToken, KeyError, Exception):
+        return None
+
+
+# =========================================================
+# ตั้งค่า Auth
+# =========================================================
+def setup_auth() -> bool:
+    auth_json = fetch_from_gist()
+
+    if not auth_json:
+        try:
+            auth_json = st.secrets["NOTEBOOKLM_AUTH_JSON"]
+        except Exception:
+            pass
+
+    if not auth_json:
+        return False
+
+    os.environ["NOTEBOOKLM_AUTH_JSON"] = auth_json
+    return True
+
+
+def is_auth_error(e: Exception) -> bool:
+    keywords = ["auth", "login", "credential", "unauthorized",
+                "403", "session", "google", "oauth", "token", "invalid"]
+    return any(kw in str(e).lower() for kw in keywords)
+
+
+def clear_gist_cache():
+    fetch_from_gist.clear()
+
+
+# =========================================================
+# ตรวจ NOTEBOOK_ID
+# =========================================================
+if not NOTEBOOK_ID:
+    st.error("⚠️ ไม่พบ NOTEBOOK_ID ใน Streamlit Secrets")
+    st.info("กรุณาเพิ่ม NOTEBOOK_ID = '...' ใน App settings → Secrets")
     st.stop()
 
-# สร้าง client (google-genai SDK ใหม่)
-client = genai.Client(api_key=API_KEY)
-MODEL  = "gemini-3.5-flash-lite"
+# =========================================================
+# NOTEBOOKLM
+# =========================================================
+async def get_answer(prompt: str) -> str:
+    async with NotebookLMClient.from_storage() as client:
+        result = await client.chat.ask(NOTEBOOK_ID, prompt)
+        return result.answer
 
-# ────────────────────────────────────────────────
-# 3. โหลด PDF ระเบียบขึ้น Gemini File API
-# ────────────────────────────────────────────────
-REGULATIONS_DIR = Path("regulations")
 
-@st.cache_resource(show_spinner=False)
-def load_regulation_files():
-    if not REGULATIONS_DIR.exists():
-        return [], []
-
-    pdf_paths = sorted(glob.glob(str(REGULATIONS_DIR / "**/*.pdf"), recursive=True))
-    if not pdf_paths:
-        return [], []
-
-    uploaded_files = []
-    file_names = []
-
-    progress = st.progress(0, text="กำลังโหลดระเบียบ...")
-    for i, path in enumerate(pdf_paths):
-        try:
-            with open(path, "rb") as f:
-                response = client.files.upload(
-                    file=f,
-                    config=types.UploadFileConfig(mime_type="application/pdf")
-                )
-            uploaded_files.append(response)
-            file_names.append(Path(path).stem)
-        except Exception as e:
-            st.warning(f"โหลดไฟล์ไม่สำเร็จ: {Path(path).name} — {e}")
-        progress.progress(
-            (i + 1) / len(pdf_paths),
-            text=f"โหลด {i+1}/{len(pdf_paths)}: {Path(path).name}"
-        )
-    progress.empty()
-    return uploaded_files, file_names
-
-# ────────────────────────────────────────────────
-# 4. System Prompt
-# ────────────────────────────────────────────────
-SYSTEM_PROMPT = """คุณคือผู้ช่วยงานพัสดุของกองทัพอากาศ (ทอ.) ผู้เชี่ยวชาญระเบียบและกฎหมายพัสดุ
-
-เมื่อตอบคำถาม ให้ปฏิบัติดังนี้:
-1. อ่านและวิเคราะห์เอกสารระเบียบทุกฉบับที่ได้รับอย่างละเอียด
-2. ตอบเป็นภาษาไทย ชัดเจน ครบถ้วน เป็นระบบ
-3. แบ่งเนื้อหาเป็นหัวข้อย่อยให้อ่านง่าย เช่น ข้อ 1. ข้อ 2.
-4. อ้างอิงชื่อระเบียบ ข้อ/มาตรา และเลขหน้าให้ชัดเจนทุกครั้ง เช่น (บทที่ ๑๑ ข้อ ๓)
-5. ใช้ตัวหนาเน้นคำสำคัญ เช่น **คณะกรรมการตรวจรับพัสดุ**
-6. หากมีหลายกรณี (เช่น งานซื้อ/งานจ้างก่อสร้าง/งานจ้างที่ปรึกษา) ให้แยกอธิบายแต่ละกรณี
-7. ตอบให้ครบถ้วนสมบูรณ์ ไม่ตัดทอน
-8. ปิดท้ายด้วยการถามว่าต้องการข้อมูลเพิ่มเติมด้านใดหรือไม่
-
-ห้าม:
-- ตอบสั้นเกินไปหรือข้ามรายละเอียดสำคัญ
-- ตอบโดยไม่อ้างอิงแหล่งที่มา
-- ตอบนอกเรื่องงานพัสดุและกฎหมายที่เกี่ยวข้อง"""
-
-# ────────────────────────────────────────────────
-# 5. ฟังก์ชันถาม-ตอบ (google-genai SDK ใหม่)
-# ────────────────────────────────────────────────
-def ask_regulation(question: str, reg_files: list, chat_history: list) -> str:
-    try:
-        # สร้าง contents list
-        contents = []
-
-        # ใส่ประวัติการสนทนา
-        for h in chat_history:
-            contents.append(types.Content(
-                role="user",
-                parts=[types.Part(text=h["user"])]
-            ))
-            contents.append(types.Content(
-                role="model",
-                parts=[types.Part(text=h["assistant"])]
-            ))
-
-        # คำถามปัจจุบัน + ไฟล์ระเบียบ (ใส่แค่ turn แรก)
-        current_parts = []
-        if not chat_history:
-            for f in reg_files:
-                current_parts.append(types.Part(
-                    file_data=types.FileData(file_uri=f.uri, mime_type="application/pdf")
-                ))
-        current_parts.append(types.Part(text=question))
-
-        contents.append(types.Content(role="user", parts=current_parts))
-
-        response = client.models.generate_content(
-            model=MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                temperature=0.2,
-            )
-        )
-        return response.text
-
-    except Exception as e:
-        return f"⚠️ เกิดข้อผิดพลาด: {str(e)}\n\nกรุณาลองถามใหม่อีกครั้ง"
-
-# ────────────────────────────────────────────────
-# 6. Sidebar
-# ────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown("### ✈️ ผู้ช่วยงานพัสดุ ทอ.")
-    st.markdown("---")
-
-    with st.spinner("กำลังโหลดระเบียบ..."):
-        reg_files, reg_names = load_regulation_files()
-
-    if reg_files:
-        st.markdown(f'<p class="status-ok">✅ พร้อมใช้งาน ({len(reg_files)} ไฟล์)</p>',
-                    unsafe_allow_html=True)
-        with st.expander("📂 ระเบียบที่โหลดแล้ว", expanded=False):
-            for name in reg_names:
-                st.markdown(f"• {name}")
-    else:
-        st.markdown('<p class="status-err">⚠️ ไม่พบไฟล์ระเบียบ</p>',
-                    unsafe_allow_html=True)
-        st.info("ใส่ไฟล์ PDF ในโฟลเดอร์ `regulations/` แล้ว deploy ใหม่")
-
-    st.markdown("---")
-    st.markdown("**⚡ คำถามด่วน**")
-
-    quick_questions = [
-        "วงเงินจัดซื้อโดยวิธีเฉพาะเจาะจงสูงสุดเท่าไหร่",
-        "ขั้นตอนการจัดซื้อแบบ e-bidding",
-        "คณะกรรมการตรวจรับพัสดุมีหน้าที่อะไรบ้าง",
-        "การจำหน่ายพัสดุชำรุดทำอย่างไร",
-        "หลักเกณฑ์การยืมพัสดุ",
-    ]
-    for q in quick_questions:
-        if st.button(q, key=f"quick_{q}", use_container_width=True):
-            st.session_state["quick_input"] = q
-
-    st.markdown("---")
-    if st.button("🗑️ ล้างประวัติการสนทนา", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.chat_history = []
-        st.rerun()
-
-    st.markdown("---")
+# =========================================================
+# หน้า "Session หมดอายุ"
+# =========================================================
+if st.session_state.get("auth_expired", False):
+    st.error("🔐 Session Google หมดอายุแล้ว")
     st.markdown("""
-    <small>
-    จัดทำโดย พ.อ.อ.กนก คงสีทอง<br>
-    Powered by Google Gemini API<br>
-    v3.0 — google-genai SDK
-    </small>
-    """, unsafe_allow_html=True)
+**วิธีแก้ (ทำแค่นี้เดียว):**
 
-# ────────────────────────────────────────────────
-# 7. Main Content
-# ────────────────────────────────────────────────
-st.markdown("""
-<div class="main-header">
-    <h1>✈️ ผู้ช่วยงานพัสดุ กองทัพอากาศ</h1>
-    <p>ระบบสืบค้นระเบียบการจัดซื้อจัดจ้างและบริหารพัสดุ ทอ.</p>
-</div>
-""", unsafe_allow_html=True)
+1. Double-click **`refresh_session.bat`** ในคอมพิวเตอร์
+2. Login Google บน browser ที่เปิดขึ้นมา
+3. รอจนขึ้นว่า "สำเร็จ"
+4. กดปุ่ม **"รีเฟรช"** ด้านล่าง
+""")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔄 รีเฟรช", type="primary", use_container_width=True):
+            clear_gist_cache()
+            st.session_state["auth_expired"] = False
+            st.rerun()
+    with col2:
+        if st.button("🗑️ ล้าง cache แล้วลองใหม่", use_container_width=True):
+            clear_gist_cache()
+            st.session_state["auth_expired"] = False
+            st.rerun()
+    st.stop()
 
-if not reg_files:
-    st.warning("⚠️ **ยังไม่มีไฟล์ระเบียบ** — ระบบตอบจากความรู้ทั่วไปก่อน")
 
-# ────────────────────────────────────────────────
-# 8. Session State
-# ────────────────────────────────────────────────
+# =========================================================
+# ตรวจ auth
+# =========================================================
+if not setup_auth():
+    st.error("⚠️ ยังไม่ได้ตั้งค่า NotebookLM Authentication")
+    st.info("กรุณาตั้งค่า GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY ใน Secrets")
+    if st.button("🔄 ลองใหม่", use_container_width=True):
+        clear_gist_cache()
+        st.rerun()
+    st.stop()
+
+
+# =========================================================
+# CHAT HISTORY
+# =========================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "quick_input" not in st.session_state:
-    st.session_state.quick_input = None
 
-# ────────────────────────────────────────────────
-# 9. Welcome message
-# ────────────────────────────────────────────────
-if not st.session_state.messages:
-    with st.chat_message("assistant", avatar="✈️"):
-        st.markdown("""
-สวัสดีครับ ผมคือผู้ช่วยงานพัสดุ ทอ. พร้อมช่วยสืบค้นระเบียบและตอบคำถามเกี่ยวกับ:
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-- 📋 **ระเบียบการจัดซื้อจัดจ้าง** — วงเงิน วิธีการ เงื่อนไข
-- 🏭 **การบริหารคลังพัสดุ** — การรับ-จ่าย การตรวจนับ การจำหน่าย
-- 📝 **ขั้นตอนและแบบฟอร์ม** — เอกสารที่ต้องใช้
-- ⚖️ **ข้อกฎหมายที่เกี่ยวข้อง** — พรบ. และระเบียบที่บังคับใช้
 
-กรุณาพิมพ์คำถามได้เลยครับ 🙏
-        """)
+# =========================================================
+# CHAT INPUT
+# =========================================================
+user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ...")
 
-# ────────────────────────────────────────────────
-# 10. ประวัติการสนทนา
-# ────────────────────────────────────────────────
-for msg in st.session_state.messages:
-    avatar = "🧑‍✈️" if msg["role"] == "user" else "✈️"
-    with st.chat_message(msg["role"], avatar=avatar):
-        st.markdown(msg["content"])
-
-# ────────────────────────────────────────────────
-# 11. รับ input
-# ────────────────────────────────────────────────
-user_input = st.chat_input("พิมพ์คำถามเกี่ยวกับระเบียบพัสดุ...")
-
-if st.session_state.quick_input:
-    user_input = st.session_state.quick_input
-    st.session_state.quick_input = None
-
-# ────────────────────────────────────────────────
-# 12. ประมวลผล
-# ────────────────────────────────────────────────
-if user_input and user_input.strip():
+if user_input:
     st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user", avatar="🧑‍✈️"):
+    with st.chat_message("user"):
         st.markdown(user_input)
 
-    with st.chat_message("assistant", avatar="✈️"):
-        with st.spinner("กำลังค้นหาในระเบียบ..."):
-            start = time.time()
-            answer = ask_regulation(
-                user_input,
-                reg_files,
-                st.session_state.chat_history,
-            )
-            elapsed = time.time() - start
-
-        st.markdown(answer)
-        st.caption(f"⏱ ตอบใน {elapsed:.1f} วินาที")
-
-    st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.session_state.chat_history.append({
-        "user": user_input,
-        "assistant": answer,
-    })
-
-    if len(st.session_state.chat_history) > 10:
-        st.session_state.chat_history = st.session_state.chat_history[-10:]
+    with st.chat_message("assistant"):
+        with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
+            try:
+                answer = asyncio.run(get_answer(user_input))
+                st.markdown(answer)
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": answer}
+                )
+            except Exception as e:
+                if is_auth_error(e):
+                    clear_gist_cache()
+                    st.session_state["auth_expired"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ เกิดข้อผิดพลาดในการเชื่อมต่อ NotebookLM")
+                    st.caption(f"รายละเอียด: {str(e)}")
