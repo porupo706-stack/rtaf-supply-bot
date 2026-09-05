@@ -72,7 +72,7 @@ if not API_KEY:
 
 # สร้าง client (google-genai SDK ใหม่)
 client = genai.Client(api_key=API_KEY)
-MODEL  = "gemini-2.0-flash-lite"
+MODEL  = "gemini-3.5-flash-lite"
 
 # ────────────────────────────────────────────────
 # 3. โหลด PDF ระเบียบขึ้น Gemini File API
