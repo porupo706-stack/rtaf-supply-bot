@@ -96,7 +96,7 @@ if not API_KEY:
     """)
     st.stop()
 
-genai.configure(api_key=API_KEY)
+genai.configure(api_key=API_KEY, transport="rest")
 
 # ────────────────────────────────────────────────
 # 3. โหลดไฟล์ระเบียบ ทอ. ขึ้น Gemini File API
@@ -156,7 +156,7 @@ SYSTEM_PROMPT = """คุณคือผู้ช่วยงานพัสด�
 @st.cache_resource
 def get_model():
     return genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
+        model_name="models/gemini-1.5-flash-latest",
         system_instruction=SYSTEM_PROMPT,
     )
 
