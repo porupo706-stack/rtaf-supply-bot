@@ -156,7 +156,7 @@ SYSTEM_PROMPT = """คุณคือผู้ช่วยงานพัสด�
 @st.cache_resource
 def get_model():
     return genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
+        model_name="gemini-2.5-flash-preview-05-20",
         system_instruction=SYSTEM_PROMPT,
     )
 
