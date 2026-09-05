@@ -1,7 +1,8 @@
-streamlit
-notebooklm-py[browser]
-playwright
-PyPDF2
-pandas
-requests
-cryptography
+# RTAF Supply Bot — requirements.txt
+# อัปเดตจากเวอร์ชัน notebooklm-py → Gemini API
+
+streamlit>=1.35.0
+google-generativeai>=0.8.0
+
+# PDF support (optional — ถ้าต้องการประมวลผล PDF เอง)
+# pymupdf>=1.24.0
