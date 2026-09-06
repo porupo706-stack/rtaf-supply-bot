@@ -1,0 +1,43 @@
+name: NotebookLM Keep-Alive
+
+on:
+  schedule:
+    - cron: '*/20 * * * *'   # ทุก 20 นาที (minimum ที่ GitHub รองรับได้ดี)
+  workflow_dispatch:           # กดรันมือได้ตลอดเวลา
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-v1
+          restore-keys: |
+            playwright-chromium-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        run: pip install cryptography requests notebooklm-py[browser]
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Run Keep-Alive
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          NOTEBOOK_ID: ${{ secrets.NOTEBOOK_ID }}
+        run: python cloud_keepalive.py
