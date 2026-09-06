@@ -2,7 +2,7 @@ name: NotebookLM Keep-Alive
 
 on:
   schedule:
-    - cron: '*/20 * * * *'   # ทุก 20 นาที (minimum ที่ GitHub รองรับได้ดี)
+    - cron: '*/5 * * * *'   # ทุก 5 นาที (minimum ที่ GitHub รองรับได้ดี)
   workflow_dispatch:           # กดรันมือได้ตลอดเวลา
 
 jobs:
