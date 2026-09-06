@@ -1,17 +1,21 @@
 ══════════════════════════════════════════════════════════════════
    คู่มือติดตั้งระบบ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)
    https://rtaf-supply.streamlit.app/
+   เวอร์ชัน 2.0 (GitHub Actions Keep-Alive)
 ══════════════════════════════════════════════════════════════════
 
 ระบบนี้ใช้ NotebookLM เป็น AI ตอบคำถาม ผ่าน Streamlit Cloud
 เมื่อติดตั้งเสร็จ ผู้ใช้ทุกคนเข้าใช้งานผ่าน URL ได้ทันที
 โดยไม่ต้องติดตั้งอะไรในเครื่องตัวเอง
 
+★ เวอร์ชัน 2.0 นี้ใช้ GitHub Actions รัน Keep-Alive อัตโนมัติ
+  ทุก 5 นาที บน Cloud — ไม่ต้องเปิดเครื่องคอมไว้ตลอด ★
+
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 1 : สิ่งที่ต้องมีก่อน
 ──────────────────────────────────────────────────────────────────
 
-[ ] Python 3.10+ ติดตั้งในเครื่อง
+[ ] Python 3.10+ ติดตั้งในเครื่อง (สำหรับ login ครั้งแรกเท่านั้น)
 [ ] บัญชี GitHub (github.com)
 [ ] บัญชี Streamlit Cloud (streamlit.io)
 [ ] บัญชี Google ที่มีสิทธิ์เข้า NotebookLM
@@ -33,21 +37,29 @@
   python -m notebooklm login
 
   → browser จะเปิดขึ้น → login บัญชี Google
-  → รอขึ้น "Authentication saved to: ...storage_state.json"
+  → รอขึ้นว่า "Authentication saved to: ...storage_state.json"
+
+หมายเหตุ: ขั้นตอนนี้ทำแค่ครั้งแรกเท่านั้น
+          หลังจากนี้ GitHub Actions จะดูแล session ให้อัตโนมัติ
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 3 : สร้าง GitHub Repository
+ส่วนที่ 3 : สร้าง GitHub Repository (Public)
 ──────────────────────────────────────────────────────────────────
 
 1. เข้า github.com → New repository
 2. ตั้งชื่อ เช่น "rtaf-supply-bot"
-3. เลือก Public หรือ Private
+3. เลือก Public ← สำคัญ! ต้องเป็น Public เพื่อใช้ Actions ฟรีไม่จำกัด
 4. สร้างไฟล์ในเครื่อง แล้ว push ขึ้น GitHub
 
    ไฟล์ที่ต้องมีใน Repository:
-   ├── app.py           ← โค้ดหลักของแอป
-   ├── requirements.txt ← รายการ package
-   └── .devcontainer/   ← (อัตโนมัติจาก Streamlit)
+   ├── app.py                            ← โค้ดหลักของแอป
+   ├── requirements.txt                  ← รายการ package
+   ├── cloud_keepalive.py                ← สคริปต์ Keep-Alive บน Cloud
+   ├── refresh_session.py                ← login Google (ใช้ในเครื่อง)
+   ├── refresh_session.bat               ← เปิด refresh_session ง่ายๆ
+   └── .github/
+       └── workflows/
+           └── keepalive.yml             ← GitHub Actions schedule
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 4 : เนื้อหาไฟล์ requirements.txt
@@ -92,10 +104,13 @@ cryptography
 
 1. เข้า github.com → Settings → Developer settings
 2. Personal access tokens → Tokens (classic)
-3. กดลูกศร ▼ ข้างปุ่ม → Generate new token (classic)
-4. ตั้งชื่อ: rtaf-supply-token
-5. ติ๊กแค่ "gist" เท่านั้น! ห้ามติ๊กอื่น
-6. Generate token → copy ทันที (แสดงแค่ครั้งเดียว!)
+3. กด "Generate new token (classic)"
+4. ตั้งชื่อ: RTAF-Bot
+5. Expiration: No expiration
+6. ติ๊กแค่ "gist" เท่านั้น! ห้ามติ๊กอื่น
+7. กด Generate token → copy ทันที (แสดงแค่ครั้งเดียว!)
+
+⚠️ ห้ามเก็บ token ไว้ใน code หรือ commit ขึ้น GitHub เด็ดขาด!
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 8 : สร้าง Encryption Key
@@ -106,7 +121,6 @@ cryptography
   python generate_key.py
 
 → copy key ที่แสดงออกมา เก็บไว้ให้ดี อย่าให้ใครรู้!
-→ ตัวอย่าง: 9k0Lj8deI4ocNsbHoNXwSdoNGDc8cCsqDdIG4CYgdRg=
 
 ──────────────────────────────────────────────────────────────────
 ส่วนที่ 9 : ตั้งค่า Streamlit Cloud Secrets
@@ -129,132 +143,163 @@ cryptography
           แม้แต่ผู้ที่เห็น code ใน GitHub ก็ไม่สามารถดูได้
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 10 : ตั้งค่าไฟล์ในเครื่อง (Local Machine)
+ส่วนที่ 10 : ตั้งค่า GitHub Actions Secrets
 ──────────────────────────────────────────────────────────────────
 
-สร้าง folder สำหรับเก็บไฟล์ทั้งหมด เช่น:
-  D:\ระบบ RTAF Supply Chatbot\
+GitHub Actions ต้องการ secrets แยกต่างหากจาก Streamlit
+(ต้องตั้งค่าทั้ง 2 ที่)
 
-ไฟล์ที่ต้องมีใน folder นี้:
-  ├── app.py
-  ├── auto_refresh.py        ← แก้ไข 3 บรรทัดแรก (ส่วน CONFIG)
-  ├── generate_key.py
-  ├── refresh_session.bat
-  ├── refresh_session.py     ← แก้ไข 3 บรรทัดแรก (ส่วน CONFIG)
-  ├── requirements.txt
-  ├── start_auto_refresh.bat
-  ├── start_silent.vbs
-  └── stop_silent.bat
+1. ไปที่ Repository → Settings → Secrets and variables → Actions
+2. กด "New repository secret" แล้วเพิ่มทีละตัว 4 ตัว:
 
-แก้ไข refresh_session.py และ auto_refresh.py
-หาส่วน CONFIG แล้วใส่ค่า:
+   ┌─────────────────┬────────────────────────────────────────┐
+   │ Name            │ Secret (ค่า)                            │
+   ├─────────────────┼────────────────────────────────────────┤
+   │ GIST_TOKEN      │ ghp_token จากส่วนที่ 7                     │
+   │ GIST_ID         │ GIST_ID จากส่วนที่ 6                       │
+   │ ENCRYPTION_KEY  │ key จากส่วนที่ 8 (ตัวเดียวกับ Streamlit)       │
+   │ NOTEBOOK_ID     │ NOTEBOOK_ID จาก NotebookLM URL          │
+   └─────────────────┴────────────────────────────────────────┘
 
-  GITHUB_TOKEN   = "ghp_ใส่ token ของคุณ"
-  GIST_ID        = "ใส่ GIST_ID ของคุณ"
-  ENCRYPTION_KEY = "ใส่ key จาก generate_key.py"
+⚠️ ช่อง Name ใส่แค่ชื่อ เช่น GIST_TOKEN
+   ช่อง Secret ใส่แค่ค่า เช่น ghp_xxx... (ไม่มีชื่อนำหน้า)
+   ต้องสร้างทีละตัว ไม่ใช่ใส่รวมกันในตัวเดียว
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 11 : รันครั้งแรก
+ส่วนที่ 11 : เพิ่มไฟล์ GitHub Actions เข้า Repository
+──────────────────────────────────────────────────────────────────
+
+ไฟล์ที่ 1 : cloud_keepalive.py
+→ ไปที่ Repository → Add file → Create new file
+→ ชื่อ: cloud_keepalive.py
+→ วางโค้ดจากไฟล์ cloud_keepalive.py ที่แนบมา
+→ Commit changes
+
+ไฟล์ที่ 2 : .github/workflows/keepalive.yml
+→ Add file → Create new file
+→ ชื่อ: .github/workflows/keepalive.yml
+   (พิมพ์เต็มแบบนี้เลย GitHub จะสร้าง folder ให้อัตโนมัติ)
+→ วางโค้ดจากไฟล์ keepalive.yml ที่แนบมา
+→ Commit changes
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 12 : รันครั้งแรก (อัปโหลด session ขึ้น Gist)
 ──────────────────────────────────────────────────────────────────
 
 ขั้นที่ 1 : อัปโหลด session ขึ้น Gist ครั้งแรก
   double-click refresh_session.bat
-  → browser เปิด (ถ้ายังไม่ได้ login จะให้ login Google)
-  → รอขึ้น "✅ สำเร็จ! แอปจะดึง session ใหม่อัตโนมัติ"
+  → browser เปิด → login บัญชี Google
+  → รอขึ้นว่า "✅ สำเร็จ! แอปจะดึง session ใหม่อัตโนมัติ"
   → กด Enter เพื่อปิด
 
-ขั้นที่ 2 : ตั้งให้รันอัตโนมัติตอนเปิดเครื่อง
-  กด Win + R → พิมพ์ shell:startup → Enter
-  → copy Shortcut ของ start_silent.vbs วางไว้ในนั้น
+ขั้นที่ 2 : ทดสอบ GitHub Actions
+  ไปที่ Repository → Actions → NotebookLM Keep-Alive
+  → กด "Run workflow" → รอ 1-2 นาที
+  → ถ้าเห็น ✅ สีเขียว = พร้อมใช้งาน
 
-ขั้นที่ 3 : เริ่ม auto_refresh ทันที (ไม่ต้องรอ reboot)
-  double-click start_silent.vbs
-
-ขั้นที่ 4 : ตรวจสอบว่ารันอยู่
-  เปิด Task Manager → Tab Details → หา pythonw.exe
-  ถ้าเห็น pythonw.exe = ✅ ทำงานอยู่
-
-ขั้นที่ 5 : ทดสอบแอป
+ขั้นที่ 3 : ทดสอบแอป
   เข้า https://rtaf-supply.streamlit.app/
-  กดปุ่ม "🔄 รีเฟรช" (ถ้ามี) → ทดสอบพิมพ์คำถาม
+  → ทดสอบพิมพ์คำถาม
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 12 : การทำงานปกติของระบบ (หลังติดตั้งเสร็จ)
+ส่วนที่ 13 : การทำงานปกติของระบบ (หลังติดตั้งเสร็จ)
 ──────────────────────────────────────────────────────────────────
 
-  เปิดเครื่อง Windows
+  GitHub Actions (Cloud — ไม่ต้องเปิดเครื่อง)
       ↓
-  start_silent.vbs รันอัตโนมัติ (ไม่มีหน้าต่าง)
-      ↓
-  auto_refresh.py ทำงานเบื้องหลัง:
-    • ทุก 3 นาที  → อัปโหลด session → GitHub Gist
-    • ทุก 30 นาที → Ping NotebookLM → ต่ออายุ Google session
+  ทุก 5 นาที → cloud_keepalive.py ทำงาน:
+    • ดึง session จาก GitHub Gist
+    • Ping NotebookLM → ต่ออายุ Google session
+    • อัปโหลด session ที่อัปเดตกลับ Gist
       ↓
   Streamlit Cloud ดึง session จาก Gist
       ↓
   ผู้ใช้ทุกคนใช้งานได้ปกติ ✅
 
-──────────────────────────────────────────────────────────────────
-ส่วนที่ 13 : การบำรุงรักษา
-──────────────────────────────────────────────────────────────────
-
-สถานการณ์               	│ สิ่งที่ต้องทำ
-────────────────────────────────────────────────────────────
-ปิด/เปิดเครื่องใหม่    		│ ไม่ต้องทำอะไร (auto-start)
-ผู้ใช้ใช้แอปปกติ        		│ ไม่ต้องทำอะไร
-แอปขึ้น session หมด    	│ double-click refresh_session.bat
-  (นานๆ ครั้ง)         	│ → login Google → กดรีเฟรชในแอป
-ย้ายไปเครื่องใหม่      		│ ดูส่วนที่ 14
+  ★ ระบบทำงาน 24 ชั่วโมง 7 วัน โดยไม่ต้องเปิดคอม ★
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 14 : การย้ายไปรันในเครื่องอื่น
+ส่วนที่ 14 : การบำรุงรักษา
 ──────────────────────────────────────────────────────────────────
 
-เครื่องใหม่ต้องมี:
-  [ ] Python 3.10+ ติดตั้งแล้ว
-  [ ] รัน: pip install notebooklm-py[browser] cryptography requests
-  [ ] รัน: playwright install chromium
-  [ ] copy folder ทั้งหมดมาวาง (ค่า CONFIG ครบอยู่แล้ว)
-  [ ] double-click refresh_session.bat (login Google ครั้งแรก)
-  [ ] ตั้ง Shortcut ของ start_silent.vbs ใน shell:startup
-  [ ] double-click start_silent.vbs
-
-หมายเหตุ: ค่า GIST_ID, GITHUB_TOKEN, ENCRYPTION_KEY
-ใช้อันเดิมได้เลย ไม่ต้องสร้างใหม่
-Streamlit Secrets ก็ไม่ต้องแก้ไข
+   สถานการณ์              │    สิ่งที่ต้องทำ
+────────────────────────┼───────────────────────────────────
+ปิด/เปิดเครื่องใหม่        		│ ไม่ต้องทำอะไร (GitHub Actions ดูแล)
+ผู้ใช้ใช้แอปปกติ           	│ ไม่ต้องทำอะไร
+แอปขึ้น "Session หมดอายุ"  	│ double-click refresh_session.bat
+  (หายากมาก เพราะ system  │ → login Google
+   ping ทุก 5 นาที)       │ → กดปุ่มรีเฟรชในแอป
+GitHub Actions หยุดทำงาน  │ ตรวจสอบ Actions tab ใน GitHub
+Token หมดอายุหรือถูกยกเลิก 	│ สร้าง token ใหม่ → อัปเดต Secrets
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 15 : ความปลอดภัยของระบบ
+ส่วนที่ 15 : การตรวจสอบสถานะระบบ
 ──────────────────────────────────────────────────────────────────
 
-ข้อมูล            		 เก็บอยู่ที่ไหน           			ใครเห็นได้
-──────────────────┼─────────────────────────┼───────────────
-NOTEBOOK_ID       │ Streamlit Secrets       │ ผู้ดูแลระบบ
-GIST_ID           │ Streamlit Secrets       │ ผู้ดูแลระบบ
-GITHUB_TOKEN      │ Streamlit Secrets       │ ผู้ดูแลระบบ
-SESSION_ENC_KEY   │ Streamlit Secrets       │ ผู้ดูแลระบบ
-Google Session    │ GitHub Gist (เข้ารหัส) 	  │ ผู้ดูแลระบบ
-Code (app.py)     │ GitHub (Public)         │ ทุกคน*
+ตรวจสอบผ่าน GitHub Actions:
+1. ไปที่ Repository → Actions
+2. เลือก "NotebookLM Keep-Alive"
+3. ดู run ล่าสุด:
+   ✅ สีเขียว = ทำงานปกติ
+   ❌ สีแดง   = มีปัญหา → คลิกดู log แล้วแก้ไข
 
-*app.py ไม่มีข้อมูลสำคัญอยู่เลย ปลอดภัย
+ความถี่การรัน:
+- Schedule อัตโนมัติ: ทุก 5 นาที
+- รันมือ: Actions → Run workflow (ใช้ทดสอบ)
 
 ──────────────────────────────────────────────────────────────────
-ส่วนที่ 16 : สรุปไฟล์และหน้าที่
+ส่วนที่ 16 : ความปลอดภัยของระบบ
 ──────────────────────────────────────────────────────────────────
 
-ไฟล์                    	│ หน้าที่
-────────────────────────┼──────────────────────────────────────
-app.py                  │ โค้ดแอป Streamlit Cloud (push GitHub)
-requirements.txt        │ Python packages (push GitHub)
-generate_key.py         │ สร้าง encryption key (รันครั้งเดียว)
-refresh_session.py      │ login Google + อัปโหลด session → Gist
-refresh_session.bat     │ เปิด refresh_session.py ด้วย 1 คลิก
-auto_refresh.py         │ รันเบื้องหลัง ทุก 3 นาที + 30 นาที
-start_silent.vbs        │ เริ่ม auto_refresh (ไม่มีหน้าต่าง)
-stop_silent.bat         │ หยุด auto_refresh
-start_auto_refresh.bat  │ เริ่ม auto_refresh (มีหน้าต่าง debug)
+ข้อมูล            	  │ เก็บอยู่ที่ไหน                    	│ ใครเห็นได้
+──────────────────┼─────────────────────────────┼───────────────
+NOTEBOOK_ID       │ Streamlit Secrets           │ ผู้ดูแลระบบ
+GIST_ID           │ Streamlit Secrets           │ ผู้ดูแลระบบ
+GITHUB_TOKEN      │ Streamlit Secrets           │ ผู้ดูแลระบบ
+SESSION_ENC_KEY   │ Streamlit Secrets           │ ผู้ดูแลระบบ
+GIST_TOKEN        │ GitHub Actions Secrets      │ ผู้ดูแลระบบ
+ENCRYPTION_KEY    │ GitHub Actions Secrets      │ ผู้ดูแลระบบ
+Google Session    │ GitHub Gist (เข้ารหัส)     	│ ผู้ดูแลระบบ
+Code (app.py)     │ GitHub (Public)             │ ทุกคน*
+
+*app.py และ cloud_keepalive.py ไม่มีข้อมูลสำคัญอยู่เลย ปลอดภัย
+ ห้าม commit ไฟล์ที่มีข้อมูลจริง (token, key, cookie) ขึ้น GitHub
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 17 : สรุปไฟล์และหน้าที่
+──────────────────────────────────────────────────────────────────
+
+ไฟล์                           │ หน้าที่
+──────────────────────────────┼────────────────────────────────────
+app.py                        │ โค้ดแอป Streamlit Cloud
+requirements.txt              │ Python packages
+generate_key.py               │ สร้าง encryption key (รันครั้งเดียว)
+refresh_session.py            │ login Google + อัปโหลด session → Gist
+refresh_session.bat           │ เปิด refresh_session.py ด้วย 1 คลิก
+cloud_keepalive.py            │ Keep-Alive script (รันบน GitHub Actions)
+.github/workflows/keepalive.yml│ ตั้งเวลารัน Actions ทุก 5 นาที
+
+ไฟล์ที่ไม่ต้องใช้แล้วใน v2.0:
+  auto_refresh.py         ← แทนด้วย cloud_keepalive.py บน Cloud
+  start_silent.vbs        ← ไม่ต้องรันในเครื่องแล้ว
+  stop_silent.bat         ← ไม่ต้องรันในเครื่องแล้ว
+  start_auto_refresh.bat  ← ไม่ต้องรันในเครื่องแล้ว
+
+──────────────────────────────────────────────────────────────────
+ส่วนที่ 18 : เปรียบเทียบ v1.0 กับ v2.0
+──────────────────────────────────────────────────────────────────
+
+                       │ v1.0 (Local)        │ v2.0 (GitHub Actions)
+───────────────────────┼─────────────────────┼───────────────────────
+ต้องเปิดคอมไว้        	   │ ✅ ตลอดเวลา          │ ❌ ไม่ต้องเลย
+Keep-Alive ทุก          │ 30 นาที              │ 5 นาที
+ค่าใช้จ่าย                 │ ฟรี                  │ ฟรี (Public repo)
+ดูแลระบบ                 │ ต้องเช็คเครื่อง          	 │ เช็คผ่าน GitHub ได้เลย
+Session หมด (โอกาส)     │ บ่อยกว่า               │ หายากมาก
 
 ══════════════════════════════════════════════════════════════════
    จัดทำโดย: พ.อ.อ.กนก คงสีทอง
    URL: https://rtaf-supply.streamlit.app/
+   Repository: https://github.com/porupo706-stack/rtaf-supply-bot
+   เวอร์ชัน 2.0 — GitHub Actions Keep-Alive
 ══════════════════════════════════════════════════════════════════
