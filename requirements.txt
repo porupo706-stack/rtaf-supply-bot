@@ -4,5 +4,5 @@ langchain
 langchain-core
 langchain-community
 langchain-google-genai
-faiss-cpu
 langchain-text-splitters
+faiss-cpu
