@@ -7,7 +7,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.retrieval import create_retrieval_chain
+from langchain.chains import create_retrieval_chain
 
 # ตั้งค่าหน้าจอ Streamlit
 st.set_page_config(
