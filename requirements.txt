@@ -1,7 +1,7 @@
 streamlit
-notebooklm-py[browser]
-playwright
 PyPDF2
-pandas
-requests
-cryptography
+langchain
+langchain-core
+langchain-community
+langchain-google-genai
+faiss-cpu
