@@ -65,7 +65,7 @@ def get_text_chunks(raw_docs):
 def get_vector_store(text_chunks, api_key):
     """สร้าง Vector Database ด้วย FAISS และ Gemini Embeddings"""
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
+        model="models/embedding-001",
         google_api_key=api_key
     )
     vector_store = FAISS.from_documents(text_chunks, embedding=embeddings)
@@ -90,7 +90,7 @@ def generate_answer(user_question, api_key, chat_history):
 
     # โหลด Vector Store
     embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",
+        model="models/embedding-001",
         google_api_key=api_key
     )
     vector_store = FAISS.load_local(
