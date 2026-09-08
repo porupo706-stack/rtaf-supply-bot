@@ -1,37 +1,43 @@
 import json
 import os
+import pickle
+import re
 import shutil
 from pathlib import Path
 
+import numpy as np
 import streamlit as st
 from PyPDF2 import PdfReader
-from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 # ==========================================
 # CONFIG
 # ==========================================
 APP_TITLE = "ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)"
-INDEX_DIR = Path("faiss_index")
-INDEX_META_FILE = INDEX_DIR / "index_meta.json"
+INDEX_DIR = Path("knowledge_index")
+INDEX_FILE = INDEX_DIR / "index.pkl"
+META_FILE = INDEX_DIR / "index_meta.json"
 
-# โมเดลที่ยังใช้งานได้ใน Gemini API
-EMBEDDING_MODEL = "models/gemini-embedding-001"
-LLM_MODEL = "gemini-2.5-pro"
+# สำคัญ: ไม่ใช้ Gemini Embeddings อีกต่อไป
+# การสร้างฐานความรู้ใช้ TF-IDF แบบ local จึงไม่กิน Gemini embedding quota
+LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
-TOP_K = 5
+TOP_K = 6
+MIN_SCORE = 0.04
+INDEX_VERSION = 3
 
 
 # ==========================================
-# ตั้งค่าหน้าจอ Streamlit
+# STREAMLIT CONFIG
 # ==========================================
 st.set_page_config(
     page_title=APP_TITLE,
@@ -71,10 +77,18 @@ st.markdown(
 # HELPERS
 # ==========================================
 def clean_api_key(api_key: str) -> str:
-    """ตัดช่องว่าง/เครื่องหมาย quote ที่อาจติดมาจาก Secrets หรือการ copy."""
     if not api_key:
         return ""
     return api_key.strip().strip('"').strip("'")
+
+
+def normalize_thai_text(text: str) -> str:
+    """ทำความสะอาด whitespace เพื่อให้ค้นหาเอกสารภาษาไทยได้สม่ำเสมอ."""
+    text = text or ""
+    text = text.replace("\u00a0", " ")
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def get_pdf_text_and_metadata(pdf_docs):
@@ -88,7 +102,7 @@ def get_pdf_text_and_metadata(pdf_docs):
             file_has_text = False
 
             for page_no, page in enumerate(pdf_reader.pages, start=1):
-                text = (page.extract_text() or "").strip()
+                text = normalize_thai_text(page.extract_text() or "")
 
                 if text:
                     file_has_text = True
@@ -101,7 +115,7 @@ def get_pdf_text_and_metadata(pdf_docs):
                     )
 
             if not file_has_text:
-                failed_files.append(f"{pdf.name} (ไม่พบข้อความที่อ่านได้)")
+                failed_files.append(f"{pdf.name} (ไม่พบข้อความที่อ่านได้ อาจเป็น PDF สแกนภาพ)")
 
         except Exception as exc:
             failed_files.append(f"{pdf.name} ({exc})")
@@ -114,7 +128,7 @@ def get_text_chunks(raw_docs):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
-        separators=["\n\n", "\n", " ", ""],
+        separators=["\n\n", "\n", " ", "", "\u200b"],
     )
 
     chunked_docs = []
@@ -123,7 +137,7 @@ def get_text_chunks(raw_docs):
         chunks = text_splitter.split_text(doc["text"])
 
         for chunk in chunks:
-            chunk = chunk.strip()
+            chunk = normalize_thai_text(chunk)
             if not chunk:
                 continue
 
@@ -140,84 +154,127 @@ def get_text_chunks(raw_docs):
     return chunked_docs
 
 
-def make_embeddings(api_key: str):
-    """สร้าง Gemini embedding client."""
-    return GoogleGenerativeAIEmbeddings(
-        model=EMBEDDING_MODEL,
-        google_api_key=api_key,
-    )
-
-
-def clear_vector_store():
-    """ลบฐาน FAISS เดิมก่อนสร้างใหม่."""
+def clear_knowledge_index():
     if INDEX_DIR.exists():
         shutil.rmtree(INDEX_DIR, ignore_errors=True)
 
 
-def save_index_metadata():
+def save_knowledge_index(vectorizer, matrix, docs):
     INDEX_DIR.mkdir(parents=True, exist_ok=True)
 
-    metadata = {
-        "embedding_model": EMBEDDING_MODEL,
-        "llm_model": LLM_MODEL,
-        "version": 2,
+    payload = {
+        "vectorizer": vectorizer,
+        "matrix": matrix,
+        "docs": docs,
     }
 
-    INDEX_META_FILE.write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2),
+    with INDEX_FILE.open("wb") as file:
+        pickle.dump(payload, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+    META_FILE.write_text(
+        json.dumps(
+            {
+                "version": INDEX_VERSION,
+                "retrieval": "TF-IDF character n-gram (local)",
+                "chunks": len(docs),
+                "llm_model": LLM_MODEL,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
 
-def is_vector_store_ready():
-    """ตรวจว่ามี FAISS และสร้างด้วย embedding รุ่นปัจจุบันหรือไม่."""
-    index_file = INDEX_DIR / "index.faiss"
-    store_file = INDEX_DIR / "index.pkl"
-
-    if not index_file.exists() or not store_file.exists():
-        return False
-
-    if not INDEX_META_FILE.exists():
-        return False
-
-    try:
-        metadata = json.loads(INDEX_META_FILE.read_text(encoding="utf-8"))
-        return metadata.get("embedding_model") == EMBEDDING_MODEL
-    except Exception:
-        return False
-
-
-def get_vector_store(text_chunks, api_key):
-    """สร้าง FAISS index ด้วย Gemini Embeddings และบันทึก metadata."""
+def build_knowledge_index(text_chunks):
+    """สร้างฐานความรู้ด้วย TF-IDF local; ไม่เรียก Gemini API."""
     if not text_chunks:
         raise ValueError("ไม่พบข้อความจากเอกสารสำหรับสร้างฐานความรู้")
 
-    embeddings = make_embeddings(api_key)
+    texts = [doc.page_content for doc in text_chunks]
 
-    # ป้องกัน index เก่าที่สร้างด้วย embedding คนละรุ่น
-    clear_vector_store()
-
-    vector_store = FAISS.from_documents(
-        text_chunks,
-        embedding=embeddings,
+    # Character n-gram เหมาะกับภาษาไทยเพราะไม่ต้องพึ่งการตัดคำด้วย space
+    vectorizer = TfidfVectorizer(
+        analyzer="char",
+        ngram_range=(2, 5),
+        min_df=1,
+        sublinear_tf=True,
+        max_features=250_000,
     )
 
-    vector_store.save_local(str(INDEX_DIR))
-    save_index_metadata()
+    matrix = vectorizer.fit_transform(texts)
+    clear_knowledge_index()
+    save_knowledge_index(vectorizer, matrix, text_chunks)
 
     return len(text_chunks)
 
 
-def format_docs(docs):
-    """แปลงผลค้นหาเป็น Context พร้อม metadata."""
-    if not docs:
-        return "ไม่พบข้อมูลอ้างอิงที่เกี่ยวข้อง"
+def is_knowledge_ready():
+    if not INDEX_FILE.exists() or not META_FILE.exists():
+        return False
+
+    try:
+        metadata = json.loads(META_FILE.read_text(encoding="utf-8"))
+        return metadata.get("version") == INDEX_VERSION
+    except Exception:
+        return False
+
+
+def load_knowledge_index():
+    if not is_knowledge_ready():
+        raise FileNotFoundError(
+            "ไม่พบฐานความรู้ กรุณาอัปโหลด PDF และกด 'ประมวลผลเอกสาร' ก่อนครับ"
+        )
+
+    with INDEX_FILE.open("rb") as file:
+        payload = pickle.load(file)
+
+    return payload["vectorizer"], payload["matrix"], payload["docs"]
+
+
+def retrieve_documents(user_question, top_k=TOP_K):
+    """ค้นหาแบบ local; ไม่ใช้ Gemini Embedding และไม่ใช้ FAISS."""
+    vectorizer, matrix, docs = load_knowledge_index()
+
+    query_vector = vectorizer.transform([normalize_thai_text(user_question)])
+    scores = cosine_similarity(query_vector, matrix).ravel()
+
+    if scores.size == 0:
+        return []
+
+    ranked_indices = np.argsort(scores)[::-1]
+    results = []
+
+    for idx in ranked_indices[:top_k]:
+        score = float(scores[idx])
+        if score < MIN_SCORE:
+            continue
+
+        results.append(
+            {
+                "doc": docs[idx],
+                "score": score,
+            }
+        )
+
+    return results
+
+
+def format_docs(results):
+    if not results:
+        return "ไม่พบข้อมูลอ้างอิงที่เกี่ยวข้องเพียงพอ"
 
     parts = []
+    seen = set()
 
-    for doc in docs:
+    for item in results:
+        doc = item["doc"]
         source = doc.metadata.get("source", "ไม่ทราบ")
         page = doc.metadata.get("page", "?")
+        key = (source, page, doc.page_content[:120])
+        if key in seen:
+            continue
+        seen.add(key)
 
         parts.append(
             f"[เอกสาร: {source}, หน้า: {page}]\n"
@@ -228,64 +285,43 @@ def format_docs(docs):
 
 
 def format_chat_history(messages):
-    """จัดรูปแบบประวัติสนทนา โดยไม่รวมคำถามล่าสุด."""
     formatted = []
 
     for msg in messages[:-1]:
         role = "ผู้ใช้" if msg["role"] == "user" else "ผู้ช่วย"
         formatted.append(f"{role}: {msg['content']}")
 
-    return "\n".join(formatted)
-
-
-def load_vector_store(api_key: str):
-    """โหลด FAISS index ที่สร้างด้วย embedding รุ่นปัจจุบัน."""
-    if not is_vector_store_ready():
-        raise FileNotFoundError(
-            "ไม่พบฐานความรู้ หรือฐานความรู้ถูกสร้างด้วย embedding รุ่นเก่า "
-            "กรุณาอัปโหลด PDF แล้วกด 'ประมวลผลเอกสาร' ใหม่"
-        )
-
-    embeddings = make_embeddings(api_key)
-
-    return FAISS.load_local(
-        str(INDEX_DIR),
-        embeddings,
-        allow_dangerous_deserialization=True,
-    )
+    # จำกัดประวัติไม่ให้ prompt ใหญ่เกินความจำเป็น
+    return "\n".join(formatted[-10:])
 
 
 def generate_answer(user_question, api_key, chat_history):
-    """RAG ด้วย LCEL โดยไม่ใช้ langchain.chains."""
+    """Local retrieval + Gemini generation. ไม่มี Gemini embedding call."""
     try:
-        vector_store = load_vector_store(api_key)
-        retriever = vector_store.as_retriever(
-            search_kwargs={"k": TOP_K}
-        )
+        results = retrieve_documents(user_question, TOP_K)
+        context = format_docs(results)
 
-        prompt_template = """คุณคือ "ผู้ช่วยงานพัสดุของกองทัพอากาศ (ทอ.)"
+        prompt_template = """คุณคือ \"ผู้ช่วยงานพัสดุของกองทัพอากาศ (ทอ.)\"
 
-ภารกิจ:
-ตอบคำถามโดยยึดข้อมูลจาก Context ที่ค้นพบจากเอกสารของผู้ใช้เท่านั้น
-ห้ามเติมกฎหมาย ระเบียบ ตัวเลข วันที่ หรือขั้นตอนจากความรู้ภายนอก Context
+หน้าที่:
+ตอบคำถามโดยยึดข้อมูลใน Context เท่านั้น
+ห้ามเติมกฎหมาย ระเบียบ ตัวเลข วันที่ วงเงิน หรือขั้นตอนจากความรู้ภายนอก Context
 
 ประวัติการสนทนา:
 {chat_history}
 
-Context:
+Context จากเอกสาร:
 {context}
 
 คำถามปัจจุบัน:
 {input}
 
-ข้อกำหนดสำคัญ:
-1. ตอบเฉพาะสิ่งที่ Context สนับสนุน
-2. ทุกข้อเท็จจริงจากเอกสารต้องระบุแหล่งอ้างอิงในรูปแบบ [เอกสาร: ชื่อไฟล์, หน้า: X]
-3. หาก Context ไม่เพียงพอ ให้ตอบว่า
-   "ไม่มีข้อมูลเพียงพอในระเบียบที่ให้อ้างอิง"
-   และอย่าเดาหรือสร้างข้อมูลขึ้นมาเอง
-4. หากมีหลายเอกสาร ให้แยกการอ้างอิงให้ชัดเจน
-5. ใช้ภาษาไทยที่เป็นทางการ อ่านง่าย และตรงประเด็น
+กฎสำคัญ:
+1. ตอบเฉพาะข้อเท็จจริงที่ Context สนับสนุน
+2. ทุกข้อเท็จจริงต้องมีแหล่งอ้างอิงในรูปแบบ [เอกสาร: ชื่อไฟล์, หน้า: X]
+3. หาก Context ไม่เพียงพอ ให้ตอบว่า \"ไม่มีข้อมูลเพียงพอในระเบียบที่ให้อ้างอิง\" และห้ามเดา
+4. หากมีหลายเอกสาร ให้แยกแหล่งอ้างอิงให้ชัดเจน
+5. ใช้ภาษาไทยทางการ อ่านง่าย และตอบตรงคำถาม
 
 คำตอบ:
 """
@@ -301,36 +337,35 @@ Context:
             google_api_key=api_key,
         )
 
-        chain = (
-            {
-                "context": retriever | RunnableLambda(format_docs),
-                "input": RunnablePassthrough(),
-                "chat_history": RunnableLambda(lambda _: chat_history),
-            }
-            | prompt
-            | model
-            | StrOutputParser()
-        )
+        chain = prompt | model | StrOutputParser()
 
-        return chain.invoke(user_question)
+        return chain.invoke(
+            {
+                "context": context,
+                "input": user_question,
+                "chat_history": chat_history,
+            }
+        )
 
     except Exception as exc:
         error_text = str(exc)
+        lower_error = error_text.lower()
 
-        if "API key" in error_text or "api key" in error_text:
-            return "❌ API Key ไม่ถูกต้องหรือไม่ได้รับอนุญาต กรุณาตรวจสอบ GEMINI_API_KEY"
+        if "api key" in lower_error or "permission_denied" in lower_error:
+            return "❌ API Key ไม่ถูกต้องหรือไม่มีสิทธิ์ใช้งาน Gemini API กรุณาตรวจสอบ GEMINI_API_KEY"
 
-        if "404" in error_text and "embedding" in error_text.lower():
+        if "resource_exhausted" in lower_error or "429" in lower_error or "quota" in lower_error:
             return (
-                "❌ Gemini Embedding ใช้งานไม่ได้กับ API Key นี้ "
-                "กรุณาตรวจสอบว่า API Key ใช้กับ Gemini API ได้ และลองกด "
-                "'ประมวลผลเอกสาร' ใหม่อีกครั้ง"
+                "❌ Gemini API เกินโควตาในส่วนการตอบคำถาม (Generation)\n\n"
+                "หมายเหตุ: ขั้นสร้างฐานความรู้ของระบบนี้ไม่ใช้ Gemini Embedding แล้ว "
+                "ดังนั้น 429 จุดนี้เกิดตอนเรียกโมเดลเพื่อสร้างคำตอบ กรุณารอสักครู่ "
+                "หรือใช้ API Key/แผนที่มีโควตาเพิ่มขึ้น"
             )
 
-        if "quota" in error_text.lower() or "429" in error_text:
-            return "❌ เกินโควตา Gemini API ชั่วคราว กรุณาลองใหม่ภายหลัง"
+        if "not_found" in lower_error and "model" in lower_error:
+            return f"❌ ไม่พบโมเดล {LLM_MODEL} สำหรับ API Key นี้ กรุณาตรวจสอบชื่อโมเดลหรือกำหนด GEMINI_MODEL ใน Environment"
 
-        return f"❌ เกิดข้อผิดพลาดในการประมวลผล: {error_text}"
+        return f"❌ เกิดข้อผิดพลาดในการตอบคำถาม: {error_text}"
 
 
 # ==========================================
@@ -338,7 +373,10 @@ Context:
 # ==========================================
 def main():
     st.subheader("✈️ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)")
-    st.caption("ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ โดยอ้างอิงจากเอกสารที่อัปโหลด")
+    st.caption(
+        "ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ โดยค้นจากเอกสารที่อัปโหลด "
+        "และให้ Gemini ช่วยเรียบเรียงคำตอบ"
+    )
 
     api_key_secret = ""
     try:
@@ -356,15 +394,17 @@ def main():
                 "Google Gemini API Key",
                 value=api_key_secret,
                 type="password",
-                help="ควรเก็บค่าไว้ใน Streamlit Secrets ด้วยชื่อ GEMINI_API_KEY",
+                help="ใช้สำหรับขั้นตอบคำถามเท่านั้น ขั้นสร้างฐานความรู้ไม่ใช้ Gemini Embedding",
             )
         )
 
         if not api_key:
             st.markdown(
-                "[สร้าง API Key ที่ Google AI Studio]"
-                "(https://aistudio.google.com/app/apikey)"
+                "[สร้าง API Key ที่ Google AI Studio](https://aistudio.google.com/app/apikey)"
             )
+
+        st.caption(f"โมเดลตอบคำถาม: `{LLM_MODEL}`")
+        st.caption("🔎 การค้นเอกสาร: TF-IDF Local (ไม่ใช้ Embedding API)")
 
         st.divider()
 
@@ -380,12 +420,10 @@ def main():
             type="primary",
             use_container_width=True,
         ):
-            if not api_key:
-                st.error("กรุณาใส่ Google Gemini API Key ก่อนครับ")
-            elif not pdf_docs:
+            if not pdf_docs:
                 st.error("กรุณาอัปโหลดไฟล์ PDF อย่างน้อย 1 ไฟล์")
             else:
-                with st.spinner("กำลังอ่าน PDF และสร้างฐานความรู้..."):
+                with st.spinner("กำลังอ่าน PDF และสร้างฐานความรู้แบบ Local..."):
                     try:
                         raw_docs, failed_files = get_pdf_text_and_metadata(pdf_docs)
 
@@ -396,39 +434,33 @@ def main():
                             )
                         else:
                             text_chunks = get_text_chunks(raw_docs)
-                            chunk_count = get_vector_store(text_chunks, api_key)
+                            chunk_count = build_knowledge_index(text_chunks)
 
                             st.success(
-                                f"สร้างฐานความรู้สำเร็จ: {chunk_count:,} chunks"
+                                f"สร้างฐานความรู้สำเร็จ: {chunk_count:,} chunks "
+                                "(ไม่เสีย Gemini Embedding quota)"
                             )
 
                             if failed_files:
                                 st.warning(
-                                    "ไฟล์/หน้าที่ไม่สามารถอ่านได้:\n- "
+                                    "ไฟล์ที่ไม่สามารถอ่านได้:\n- "
                                     + "\n- ".join(failed_files)
                                 )
 
-                            # รีเฟรชสถานะหลังสร้าง index
                             st.session_state["index_ready"] = True
 
                     except Exception as exc:
                         st.error(f"❌ สร้างฐานความรู้ไม่สำเร็จ: {exc}")
 
-        if is_vector_store_ready():
+        if is_knowledge_ready():
             st.success("✅ ฐานความรู้พร้อมใช้งาน")
         else:
             st.info("ℹ️ ยังไม่มีฐานความรู้พร้อมใช้งาน")
 
-        if st.button(
-            "ล้างประวัติการสนทนา",
-            use_container_width=True,
-        ):
+        if st.button("ล้างประวัติการสนทนา", use_container_width=True):
             st.session_state.messages = []
             st.rerun()
 
-    # ==========================================
-    # Chat history
-    # ==========================================
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -436,9 +468,6 @@ def main():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    # ==========================================
-    # Chat input
-    # ==========================================
     prompt = st.chat_input("พิมพ์คำถามเกี่ยวกับงานพัสดุ...")
 
     if prompt:
@@ -449,7 +478,7 @@ def main():
             )
             return
 
-        if not is_vector_store_ready():
+        if not is_knowledge_ready():
             st.warning(
                 "ยังไม่มีฐานความรู้ที่พร้อมใช้งาน "
                 "กรุณาอัปโหลด PDF และกด 'ประมวลผลเอกสาร' ก่อนครับ"
@@ -465,14 +494,8 @@ def main():
 
         with st.chat_message("assistant"):
             with st.spinner("🔎 กำลังค้นหาข้อมูลจากระเบียบ..."):
-                chat_history = format_chat_history(
-                    st.session_state.messages
-                )
-                answer = generate_answer(
-                    prompt,
-                    api_key,
-                    chat_history,
-                )
+                chat_history = format_chat_history(st.session_state.messages)
+                answer = generate_answer(prompt, api_key, chat_history)
                 st.markdown(answer)
 
         st.session_state.messages.append(
