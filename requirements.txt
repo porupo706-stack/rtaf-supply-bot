@@ -1,7 +1,7 @@
-streamlit==1.63.0
-pypdf
-langchain-core
-langchain-text-splitters
-scikit-learn==1.8.0
-numpy==2.5.3
-google-genai
+streamlit
+notebooklm-py[browser]
+playwright
+PyPDF2
+pandas
+requests
+cryptography
