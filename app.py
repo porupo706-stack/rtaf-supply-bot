@@ -7,7 +7,9 @@ from pathlib import Path
 
 import numpy as np
 import streamlit as st
-from PyPDF2 import PdfReader
+import warnings
+warnings.filterwarnings("ignore")
+from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -27,7 +29,7 @@ META_FILE = INDEX_DIR / "index_meta.json"
 
 # สำคัญ: ไม่ใช้ Gemini Embeddings อีกต่อไป
 # การสร้างฐานความรู้ใช้ TF-IDF แบบ local จึงไม่กิน Gemini embedding quota
-LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
