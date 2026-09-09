@@ -4,4 +4,4 @@ langchain-core
 langchain-text-splitters
 scikit-learn==1.8.0
 numpy==2.5.3
-google-generativeai
+google-genai
