@@ -27,9 +27,9 @@ INDEX_FILE = INDEX_DIR / "index.pkl"
 META_FILE = INDEX_DIR / "index_meta.json"
 
 try:
-    LLM_MODEL = st.secrets.get("GEMINI_MODEL", None) or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    LLM_MODEL = st.secrets.get("GEMINI_MODEL", None) or os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 except Exception:
-    LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -132,7 +132,12 @@ def save_knowledge_index(vectorizer, matrix, docs):
     with INDEX_FILE.open("wb") as file:
         pickle.dump(payload, file, protocol=pickle.HIGHEST_PROTOCOL)
     META_FILE.write_text(
-        json.dumps({"version": INDEX_VERSION, "retrieval": "TF-IDF character n-gram (local)", "chunks": len(docs), "llm_model": LLM_MODEL}, ensure_ascii=False, indent=2),
+        json.dumps({
+            "version": INDEX_VERSION,
+            "retrieval": "TF-IDF character n-gram (local)",
+            "chunks": len(docs),
+            "llm_model": LLM_MODEL,
+        }, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -141,7 +146,13 @@ def build_knowledge_index(text_chunks):
     if not text_chunks:
         raise ValueError("ไม่พบข้อความจากเอกสารสำหรับสร้างฐานความรู้")
     texts = [doc.page_content for doc in text_chunks]
-    vectorizer = TfidfVectorizer(analyzer="char", ngram_range=(2, 5), min_df=1, sublinear_tf=True, max_features=250_000)
+    vectorizer = TfidfVectorizer(
+        analyzer="char",
+        ngram_range=(2, 5),
+        min_df=1,
+        sublinear_tf=True,
+        max_features=250_000,
+    )
     matrix = vectorizer.fit_transform(texts)
     clear_knowledge_index()
     save_knowledge_index(vectorizer, matrix, text_chunks)
@@ -207,6 +218,32 @@ def format_chat_history(messages):
     return "\n".join(formatted[-10:])
 
 
+def _call_gemini(client, prompt: str) -> str:
+    """เรียก Gemini API — ปิด AFC; fallback ถ้า SDK เวอร์ชันเก่าไม่รองรับ config นี้"""
+    # วิธีที่ 1: ปิด AFC ผ่าน GenerateContentConfig (google-genai >= 0.8)
+    try:
+        response = client.models.generate_content(
+            model=LLM_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                    disable=True,
+                ),
+            ),
+        )
+        return response.text
+    except (AttributeError, TypeError):
+        # SDK เวอร์ชันที่ไม่มี AutomaticFunctionCallingConfig → เรียกตรง ๆ
+        pass
+
+    # วิธีที่ 2: เรียกโดยไม่มี AFC config (ปลอดภัยเสมอเพราะไม่ได้ส่ง tools)
+    response = client.models.generate_content(
+        model=LLM_MODEL,
+        contents=prompt,
+    )
+    return response.text
+
+
 def generate_answer(user_question, api_key, chat_history):
     """ใช้ google-genai SDK ใหม่ — รองรับ Auth Key AQ. format"""
     try:
@@ -237,24 +274,19 @@ Context จากเอกสาร:
 
 คำตอบ:"""
 
-        # google-genai SDK ใหม่ — รองรับ AQ. Auth Key
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-        model=LLM_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-            disable=True
-        )
-    ),
-)
-        return response.text
+        return _call_gemini(client, prompt)
 
     except Exception as exc:
         error_text = str(exc)
         lower_error = error_text.lower()
 
-        if "api_key" in lower_error or "permission_denied" in lower_error or "invalid" in lower_error or "unauthenticated" in lower_error:
+        if (
+            "api_key" in lower_error
+            or "permission_denied" in lower_error
+            or "unauthenticated" in lower_error
+            or ("invalid" in lower_error and "key" in lower_error)
+        ):
             return "❌ API Key ไม่ถูกต้องหรือไม่มีสิทธิ์ใช้งาน กรุณาตรวจสอบ GEMINI_API_KEY"
 
         if "resource_exhausted" in lower_error or "429" in lower_error or "quota" in lower_error:
@@ -262,12 +294,15 @@ Context จากเอกสาร:
 
         if "not found" in lower_error or "404" in lower_error or "not_found" in lower_error:
             return (
-                f"❌ ไม่พบโมเดล '{LLM_MODEL}'\n\n"
+                f"❌ ไม่พบโมเดล `{LLM_MODEL}`\n\n"
+                f"**Error จริง:** `{error_text}`\n\n"
                 "กรุณาเปลี่ยน GEMINI_MODEL ใน Streamlit Secrets เป็น:\n"
-                "- gemini-2.0-flash\n- gemini-1.5-flash\n- gemini-2.5-flash-preview-05-20"
+                "- `gemini-1.5-flash` ← **แนะนำ** (เสถียรที่สุด)\n"
+                "- `gemini-1.5-pro`\n"
+                "- `gemini-2.0-flash-exp`"
             )
 
-        return f"❌ เกิดข้อผิดพลาด: {error_text}"
+        return f"❌ เกิดข้อผิดพลาด:\n```\n{error_text}\n```"
 
 
 # ==========================================
@@ -287,7 +322,12 @@ def main():
         st.subheader("⚙️ การตั้งค่าระบบ")
 
         api_key = clean_api_key(
-            st.text_input("Google Gemini API Key", value=api_key_secret, type="password", help="รองรับ Auth Key AQ. และ AIzaSy...")
+            st.text_input(
+                "Google Gemini API Key",
+                value=api_key_secret,
+                type="password",
+                help="รองรับ Auth Key AQ. และ AIzaSy...",
+            )
         )
 
         if not api_key:
@@ -313,7 +353,10 @@ def main():
                         else:
                             text_chunks = get_text_chunks(raw_docs)
                             chunk_count = build_knowledge_index(text_chunks)
-                            st.success(f"สร้างฐานความรู้สำเร็จ: {chunk_count:,} chunks (ไม่เสีย Gemini Embedding quota)")
+                            st.success(
+                                f"สร้างฐานความรู้สำเร็จ: {chunk_count:,} chunks "
+                                f"(ไม่เสีย Gemini Embedding quota)"
+                            )
                             if failed_files:
                                 st.warning("ไฟล์ที่ไม่สามารถอ่านได้:\n- " + "\n- ".join(failed_files))
                             st.session_state["index_ready"] = True
@@ -340,7 +383,10 @@ def main():
 
     if prompt:
         if not api_key:
-            st.warning("กรุณาใส่ Google Gemini API Key ที่แถบด้านซ้าย หรือกำหนด GEMINI_API_KEY ใน Streamlit Secrets")
+            st.warning(
+                "กรุณาใส่ Google Gemini API Key ที่แถบด้านซ้าย "
+                "หรือกำหนด GEMINI_API_KEY ใน Streamlit Secrets"
+            )
             return
         if not is_knowledge_ready():
             st.warning("ยังไม่มีฐานความรู้ที่พร้อมใช้งาน กรุณาอัปโหลด PDF และกด 'ประมวลผลเอกสาร' ก่อนครับ")
@@ -361,4 +407,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
