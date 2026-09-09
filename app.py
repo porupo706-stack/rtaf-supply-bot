@@ -15,6 +15,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from google import genai
+from google.genai import types
 
 
 # ==========================================
@@ -239,9 +240,14 @@ Context จากเอกสาร:
         # google-genai SDK ใหม่ — รองรับ AQ. Auth Key
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model=LLM_MODEL,
-            contents=prompt,
+        model=LLM_MODEL,
+        contents=prompt,
+        config=types.GenerateContentConfig(
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(
+            disable=True
         )
+    ),
+)
         return response.text
 
     except Exception as exc:
