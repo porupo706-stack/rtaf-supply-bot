@@ -14,7 +14,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import google.generativeai as genai
+from google import genai
 
 
 # ==========================================
@@ -25,11 +25,10 @@ INDEX_DIR = Path("knowledge_index")
 INDEX_FILE = INDEX_DIR / "index.pkl"
 META_FILE = INDEX_DIR / "index_meta.json"
 
-# อ่านจาก Streamlit Secrets ก่อน ถ้าไม่มีค่อยอ่านจาก env
 try:
-    LLM_MODEL = st.secrets.get("GEMINI_MODEL", None) or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    LLM_MODEL = st.secrets.get("GEMINI_MODEL", None) or os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 except Exception:
-    LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    LLM_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -41,36 +40,29 @@ INDEX_VERSION = 3
 # ==========================================
 # STREAMLIT CONFIG
 # ==========================================
-st.set_page_config(
-    page_title=APP_TITLE,
-    page_icon="✈️",
-    layout="wide",
-)
+st.set_page_config(page_title=APP_TITLE, page_icon="✈️", layout="wide")
 
-st.markdown(
-    """
-    <style>
-    div[data-testid="stChatInput"] {
-        border-color: #4CAF50 !important;
-        border-radius: 0.5rem !important;
-    }
-    div[data-testid="stChatInput"]:focus-within,
-    div[data-testid="stChatInput"] > div:focus-within {
-        border-color: #2E7D32 !important;
-        box-shadow: 0 0 0 1px #2E7D32 !important;
-        border-radius: 0.5rem !important;
-    }
-    .source-box {
-        padding: 0.75rem 1rem;
-        border-left: 4px solid #2E7D32;
-        background: rgba(76, 175, 80, 0.07);
-        border-radius: 0.35rem;
-        margin-top: 0.75rem;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<style>
+div[data-testid="stChatInput"] {
+    border-color: #4CAF50 !important;
+    border-radius: 0.5rem !important;
+}
+div[data-testid="stChatInput"]:focus-within,
+div[data-testid="stChatInput"] > div:focus-within {
+    border-color: #2E7D32 !important;
+    box-shadow: 0 0 0 1px #2E7D32 !important;
+    border-radius: 0.5rem !important;
+}
+.source-box {
+    padding: 0.75rem 1rem;
+    border-left: 4px solid #2E7D32;
+    background: rgba(76, 175, 80, 0.07);
+    border-radius: 0.35rem;
+    margin-top: 0.75rem;
+}
+</style>
+""", unsafe_allow_html=True)
 
 
 # ==========================================
@@ -123,10 +115,7 @@ def get_text_chunks(raw_docs):
             if not chunk:
                 continue
             chunked_docs.append(
-                Document(
-                    page_content=chunk,
-                    metadata={"source": doc["source"], "page": doc["page"]},
-                )
+                Document(page_content=chunk, metadata={"source": doc["source"], "page": doc["page"]})
             )
     return chunked_docs
 
@@ -142,16 +131,7 @@ def save_knowledge_index(vectorizer, matrix, docs):
     with INDEX_FILE.open("wb") as file:
         pickle.dump(payload, file, protocol=pickle.HIGHEST_PROTOCOL)
     META_FILE.write_text(
-        json.dumps(
-            {
-                "version": INDEX_VERSION,
-                "retrieval": "TF-IDF character n-gram (local)",
-                "chunks": len(docs),
-                "llm_model": LLM_MODEL,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
+        json.dumps({"version": INDEX_VERSION, "retrieval": "TF-IDF character n-gram (local)", "chunks": len(docs), "llm_model": LLM_MODEL}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -160,13 +140,7 @@ def build_knowledge_index(text_chunks):
     if not text_chunks:
         raise ValueError("ไม่พบข้อความจากเอกสารสำหรับสร้างฐานความรู้")
     texts = [doc.page_content for doc in text_chunks]
-    vectorizer = TfidfVectorizer(
-        analyzer="char",
-        ngram_range=(2, 5),
-        min_df=1,
-        sublinear_tf=True,
-        max_features=250_000,
-    )
+    vectorizer = TfidfVectorizer(analyzer="char", ngram_range=(2, 5), min_df=1, sublinear_tf=True, max_features=250_000)
     matrix = vectorizer.fit_transform(texts)
     clear_knowledge_index()
     save_knowledge_index(vectorizer, matrix, text_chunks)
@@ -233,7 +207,7 @@ def format_chat_history(messages):
 
 
 def generate_answer(user_question, api_key, chat_history):
-    """ใช้ google-generativeai SDK โดยตรง — รองรับทั้ง AIzaSy... และ AQ... Auth Key"""
+    """ใช้ google-genai SDK ใหม่ — รองรับ Auth Key AQ. format"""
     try:
         results = retrieve_documents(user_question, TOP_K)
         context = format_docs(results)
@@ -262,29 +236,29 @@ Context จากเอกสาร:
 
 คำตอบ:"""
 
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(LLM_MODEL)
-        response = model.generate_content(prompt)
+        # google-genai SDK ใหม่ — รองรับ AQ. Auth Key
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model=LLM_MODEL,
+            contents=prompt,
+        )
         return response.text
 
     except Exception as exc:
         error_text = str(exc)
         lower_error = error_text.lower()
 
-        if "api key" in lower_error or "permission_denied" in lower_error or "invalid" in lower_error:
-            return "❌ API Key ไม่ถูกต้องหรือไม่มีสิทธิ์ใช้งาน Gemini API กรุณาตรวจสอบ GEMINI_API_KEY"
+        if "api_key" in lower_error or "permission_denied" in lower_error or "invalid" in lower_error or "unauthenticated" in lower_error:
+            return "❌ API Key ไม่ถูกต้องหรือไม่มีสิทธิ์ใช้งาน กรุณาตรวจสอบ GEMINI_API_KEY"
 
         if "resource_exhausted" in lower_error or "429" in lower_error or "quota" in lower_error:
-            return (
-                "❌ Gemini API เกินโควตา กรุณารอสักครู่แล้วลองใหม่\n\n"
-                "หมายเหตุ: Free tier มีจำกัด 15 requests/นาที หากต้องการเพิ่ม ควรอัปเกรดแผน"
-            )
+            return "❌ Gemini API เกินโควตา กรุณารอสักครู่แล้วลองใหม่ (Free tier: 15 req/นาที)"
 
-        if "not found" in lower_error or "404" in lower_error:
+        if "not found" in lower_error or "404" in lower_error or "not_found" in lower_error:
             return (
                 f"❌ ไม่พบโมเดล '{LLM_MODEL}'\n\n"
                 "กรุณาเปลี่ยน GEMINI_MODEL ใน Streamlit Secrets เป็น:\n"
-                "- gemini-2.5-flash\n- gemini-2.0-flash\n- gemini-1.5-flash"
+                "- gemini-2.0-flash\n- gemini-1.5-flash\n- gemini-2.5-flash-preview-05-20"
             )
 
         return f"❌ เกิดข้อผิดพลาด: {error_text}"
@@ -295,10 +269,7 @@ Context จากเอกสาร:
 # ==========================================
 def main():
     st.subheader("✈️ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)")
-    st.caption(
-        "ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ โดยค้นจากเอกสารที่อัปโหลด "
-        "และให้ Gemini ช่วยเรียบเรียงคำตอบ"
-    )
+    st.caption("ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ โดยค้นจากเอกสารที่อัปโหลด และให้ Gemini ช่วยเรียบเรียงคำตอบ")
 
     api_key_secret = ""
     try:
@@ -310,12 +281,7 @@ def main():
         st.subheader("⚙️ การตั้งค่าระบบ")
 
         api_key = clean_api_key(
-            st.text_input(
-                "Google Gemini API Key",
-                value=api_key_secret,
-                type="password",
-                help="รองรับทั้ง AIzaSy... และ AQ... Auth Key",
-            )
+            st.text_input("Google Gemini API Key", value=api_key_secret, type="password", help="รองรับ Auth Key AQ. และ AIzaSy...")
         )
 
         if not api_key:
@@ -327,11 +293,7 @@ def main():
         st.divider()
 
         st.subheader("📁 นำเข้าความรู้")
-        pdf_docs = st.file_uploader(
-            "อัปโหลดไฟล์ PDF",
-            accept_multiple_files=True,
-            type=["pdf"],
-        )
+        pdf_docs = st.file_uploader("อัปโหลดไฟล์ PDF", accept_multiple_files=True, type=["pdf"])
 
         if st.button("ประมวลผลเอกสาร", type="primary", use_container_width=True):
             if not pdf_docs:
@@ -374,7 +336,6 @@ def main():
         if not api_key:
             st.warning("กรุณาใส่ Google Gemini API Key ที่แถบด้านซ้าย หรือกำหนด GEMINI_API_KEY ใน Streamlit Secrets")
             return
-
         if not is_knowledge_ready():
             st.warning("ยังไม่มีฐานความรู้ที่พร้อมใช้งาน กรุณาอัปโหลด PDF และกด 'ประมวลผลเอกสาร' ก่อนครับ")
             return
@@ -394,3 +355,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+PYEOF
+echo "Done"
