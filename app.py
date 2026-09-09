@@ -274,7 +274,12 @@ Context จากเอกสาร:
 
 คำตอบ:"""
 
-        client = genai.Client(api_key=api_key)
+        # ระบุ api_version="v1" เพื่อใช้ endpoint stable แทน v1beta (default)
+        # gemini-1.5-flash และ gemini-2.0-flash อยู่ใน v1 ไม่ใช่ v1beta
+        client = genai.Client(
+            api_key=api_key,
+            http_options={"api_version": "v1"},
+        )
         return _call_gemini(client, prompt)
 
     except Exception as exc:
