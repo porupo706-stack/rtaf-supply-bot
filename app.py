@@ -37,6 +37,9 @@ TOP_K = 6
 MIN_SCORE = 0.04
 INDEX_VERSION = 3
 
+# API versions to try in order
+_API_VERSIONS = ("v1", "v1beta", "v1alpha")
+
 
 # ==========================================
 # STREAMLIT CONFIG
@@ -218,9 +221,38 @@ def format_chat_history(messages):
     return "\n".join(formatted[-10:])
 
 
+# ==========================================
+# MODEL DISCOVERY
+# ==========================================
+def list_available_models(api_key: str) -> tuple[list[str], str]:
+    """
+    ดึงรายชื่อโมเดลที่ใช้งานได้จริงจาก API key นี้
+    คืนค่า (รายชื่อโมเดล, API version ที่ใช้งานได้)
+    """
+    for api_ver in _API_VERSIONS:
+        try:
+            client = genai.Client(
+                api_key=api_key,
+                http_options={"api_version": api_ver},
+            )
+            names = []
+            for m in client.models.list():
+                raw_name = getattr(m, "name", "") or ""
+                short = raw_name.replace("models/", "")
+                if not short:
+                    continue
+                methods = str(getattr(m, "supported_generation_methods", ""))
+                if "generateContent" in methods or not methods.strip("[]"):
+                    names.append(short)
+            if names:
+                return sorted(names), api_ver
+        except Exception:
+            continue
+    return [], ""
+
+
 def _call_gemini(client, prompt: str) -> str:
-    """เรียก Gemini API — ปิด AFC; fallback ถ้า SDK เวอร์ชันเก่าไม่รองรับ config นี้"""
-    # วิธีที่ 1: ปิด AFC ผ่าน GenerateContentConfig (google-genai >= 0.8)
+    """เรียก Gemini API — ปิด AFC; fallback ถ้า SDK เวอร์ชันเก่าไม่รองรับ config"""
     try:
         response = client.models.generate_content(
             model=LLM_MODEL,
@@ -233,10 +265,8 @@ def _call_gemini(client, prompt: str) -> str:
         )
         return response.text
     except (AttributeError, TypeError):
-        # SDK เวอร์ชันที่ไม่มี AutomaticFunctionCallingConfig → เรียกตรง ๆ
         pass
 
-    # วิธีที่ 2: เรียกโดยไม่มี AFC config (ปลอดภัยเสมอเพราะไม่ได้ส่ง tools)
     response = client.models.generate_content(
         model=LLM_MODEL,
         contents=prompt,
@@ -245,7 +275,7 @@ def _call_gemini(client, prompt: str) -> str:
 
 
 def generate_answer(user_question, api_key, chat_history):
-    """ใช้ google-genai SDK ใหม่ — รองรับ Auth Key AQ. format"""
+    """ใช้ google-genai SDK — ลอง API version ทุกตัวจนกว่าจะได้คำตอบ"""
     try:
         results = retrieve_documents(user_question, TOP_K)
         context = format_docs(results)
@@ -274,13 +304,24 @@ Context จากเอกสาร:
 
 คำตอบ:"""
 
-        # ระบุ api_version="v1" เพื่อใช้ endpoint stable แทน v1beta (default)
-        # gemini-1.5-flash และ gemini-2.0-flash อยู่ใน v1 ไม่ใช่ v1beta
-        client = genai.Client(
-            api_key=api_key,
-            http_options={"api_version": "v1"},
-        )
-        return _call_gemini(client, prompt)
+        # ลอง API version ทีละตัวจนกว่าจะสำเร็จ
+        last_exc = None
+        for api_ver in _API_VERSIONS:
+            try:
+                client = genai.Client(
+                    api_key=api_key,
+                    http_options={"api_version": api_ver},
+                )
+                return _call_gemini(client, prompt)
+            except Exception as exc:
+                err = str(exc).lower()
+                if "not_found" in err or "not found" in err or "404" in err:
+                    last_exc = exc
+                    continue  # โมเดลไม่มีใน version นี้ → ลอง version ถัดไป
+                raise exc   # error อื่น → ให้ outer except จัดการ
+
+        # ทุก version ล้มเหลว
+        raise last_exc
 
     except Exception as exc:
         error_text = str(exc)
@@ -299,12 +340,10 @@ Context จากเอกสาร:
 
         if "not found" in lower_error or "404" in lower_error or "not_found" in lower_error:
             return (
-                f"❌ ไม่พบโมเดล `{LLM_MODEL}`\n\n"
-                f"**Error จริง:** `{error_text}`\n\n"
-                "กรุณาเปลี่ยน GEMINI_MODEL ใน Streamlit Secrets เป็น:\n"
-                "- `gemini-1.5-flash` ← **แนะนำ** (เสถียรที่สุด)\n"
-                "- `gemini-1.5-pro`\n"
-                "- `gemini-2.0-flash-exp`"
+                f"❌ โมเดล `{LLM_MODEL}` ไม่มีใน API นี้\n\n"
+                f"**Error:** `{error_text}`\n\n"
+                "👉 กด **🔍 ดูโมเดลที่ใช้งานได้** ในแถบซ้ายเพื่อดูชื่อโมเดลที่ถูกต้อง\n"
+                "แล้วนำชื่อโมเดลไปใส่ใน **Streamlit Secrets → GEMINI_MODEL**"
             )
 
         return f"❌ เกิดข้อผิดพลาด:\n```\n{error_text}\n```"
@@ -340,6 +379,26 @@ def main():
 
         st.caption(f"โมเดลตอบคำถาม: `{LLM_MODEL}`")
         st.caption("🔎 การค้นเอกสาร: TF-IDF Local (ไม่ใช้ Embedding API)")
+
+        # ปุ่มตรวจสอบโมเดลที่ใช้งานได้
+        if api_key and st.button("🔍 ดูโมเดลที่ใช้งานได้", use_container_width=True):
+            with st.spinner("กำลังสอบถาม API..."):
+                models, found_ver = list_available_models(api_key)
+            if models:
+                st.success(f"พบโมเดล {len(models)} รายการ (API version: `{found_ver}`)")
+                model_text = "\n".join(f"- `{m}`" for m in models)
+                st.markdown(model_text)
+                st.info(
+                    "📋 คัดลอกชื่อโมเดลที่ต้องการไปใส่ใน\n"
+                    "**Streamlit Secrets** → `GEMINI_MODEL = \"ชื่อโมเดล\"`"
+                )
+            else:
+                st.error(
+                    "ไม่สามารถดึงรายชื่อโมเดลได้\n\n"
+                    "กรุณาตรวจสอบ:\n"
+                    "- API Key ถูกต้องหรือไม่\n"
+                    "- API Key มีสิทธิ์ใช้งาน Gemini API หรือไม่"
+                )
 
         st.divider()
 
