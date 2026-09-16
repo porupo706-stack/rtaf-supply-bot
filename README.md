@@ -93,8 +93,6 @@ rtaf-supply-bot/
 7. **รัน `refresh_session.bat`** — อัปโหลด session ขึ้น Gist ครั้งแรก
 8. **ทดสอบ GitHub Actions** — กด Run workflow แล้วรอดู ✅
 
-> 📄 ดูขั้นตอนละเอียดทั้งหมดได้ที่ [คู่มือติดตั้ง_RTAF_Supply_Bot.txt](คู่มือติดตั้ง_RTAF_Supply_Bot.txt)
-
 ---
 
 ## การบำรุงรักษา
