@@ -10,11 +10,11 @@
 
 ## ภาพรวมระบบ
 
-ระบบนี้ใช้ **NotebookLM** เป็น AI ตอบคำถาม ทำงานบน **Streamlit Cloud** โดยมี **GitHub Actions** คอยรักษา session ให้อัตโนมัติทุก 5 นาที ผู้ใช้ทุกคนเข้าถึงได้ผ่าน URL โดยไม่ต้องติดตั้งโปรแกรมใดในเครื่อง
+ระบบนี้ใช้ **NotebookLM** เป็น AI ตอบคำถาม ทำงานบน **Streamlit Cloud** โดยมี **GitHub Actions** คอยรักษา session ให้อัตโนมัติ ผู้ใช้ทุกคนเข้าถึงได้ผ่าน URL โดยไม่ต้องติดตั้งโปรแกรมใดในเครื่อง
 
 ```
 GitHub Actions (Cloud)
-    ↓ ทุก 5 นาที
+    ↓ 
 cloud_keepalive.py
     ├── ดึง session จาก GitHub Gist (เข้ารหัส)
     ├── Ping NotebookLM → ต่ออายุ Google session
@@ -31,7 +31,7 @@ cloud_keepalive.py
 
 - 🤖 **AI ตอบคำถาม** — สืบค้นระเบียบการจัดซื้อจัดจ้างด้วยภาษาธรรมชาติ
 - ☁️ **ทำงาน 24/7 บน Cloud** — ไม่ต้องเปิดเครื่องคอมพิวเตอร์ทิ้งไว้
-- 🔄 **Keep-Alive อัตโนมัติ** — GitHub Actions รักษา session ทุก 5 นาที
+- 🔄 **Keep-Alive อัตโนมัติ** — GitHub Actions รักษา session
 - 🔒 **ความปลอดภัยสูง** — ไม่มีข้อมูลสำคัญใดอยู่ใน source code เลย
 - 🆓 **ไม่มีค่าใช้จ่าย** — ใช้ GitHub Actions (Public repo) และ Streamlit Cloud ฟรี
 
@@ -67,7 +67,7 @@ rtaf-supply-bot/
 ├── .gitignore                      # ป้องกันไฟล์สำคัญหลุด GitHub
 └── .github/
     └── workflows/
-        └── keepalive.yml           # ตั้งเวลารัน Actions ทุก 5 นาที
+        └── keepalive.yml           # ตั้งเวลารัน Actions
 ```
 
 ---
