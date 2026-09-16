@@ -1,1 +1,3 @@
-
+secret.txt
+.env
+*.key
