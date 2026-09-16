@@ -50,8 +50,6 @@ cloud_keepalive.py
 | Google Session | GitHub Gist (เข้ารหัส AES) | ผู้ดูแลระบบ |
 | Source code (`app.py`) | GitHub (Public) | ทุกคน ✅ ปลอดภัย |
 
-> **`app.py` และ `cloud_keepalive.py` ไม่มีข้อมูลสำคัญอยู่เลย** — ปลอดภัยในการเปิดเผยสาธารณะ
-
 ---
 
 ## โครงสร้างไฟล์
