@@ -70,29 +70,6 @@ rtaf-supply-bot/
 
 ---
 
-## สิ่งที่ต้องมีก่อนติดตั้ง
-
-- Python 3.10+ (ใช้ login ครั้งแรกเท่านั้น)
-- บัญชี GitHub
-- บัญชี Streamlit Cloud
-- บัญชี Google ที่มีสิทธิ์เข้า NotebookLM
-- NotebookLM Notebook ที่อัปโหลดเอกสารพัสดุไว้แล้ว
-
----
-
-## ขั้นตอนติดตั้ง (ภาพรวม)
-
-1. **Login Google ครั้งแรก** — รัน `python -m notebooklm login` ในเครื่อง
-2. **สร้าง GitHub Gist** — สำหรับเก็บ session เข้ารหัส (ต้องเป็น Secret Gist)
-3. **สร้าง GitHub Personal Access Token** — สิทธิ์แค่ `gist` เท่านั้น
-4. **สร้าง Encryption Key** — รัน `python generate_key.py`
-5. **ตั้งค่า Streamlit Secrets** — ใส่ค่าทั้ง 4 ตัวใน App settings
-6. **ตั้งค่า GitHub Actions Secrets** — ใส่ค่าทั้ง 4 ตัวใน Repository settings
-7. **รัน `refresh_session.bat`** — อัปโหลด session ขึ้น Gist ครั้งแรก
-8. **ทดสอบ GitHub Actions** — กด Run workflow แล้วรอดู ✅
-
----
-
 ## การบำรุงรักษา
 
 | สถานการณ์ | สิ่งที่ต้องทำ |
