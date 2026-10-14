@@ -1,7 +1,7 @@
 # ระบบผู้ช่วยงานพัสดุ กองทัพอากาศ (RTAF Supply Bot)
 
 > แชทบอทตอบคำถามด้านงานพัสดุ สืบค้นระเบียบการจัดซื้อ และบริหารคลังพัสดุ  
-> ขับเคลื่อนด้วย NotebookLM AI — เข้าถึงได้ผ่าน URL ทันที ไม่ต้องติดตั้งในเครื่อง
+> เข้าถึงได้ผ่าน URL ทันที ไม่ต้องติดตั้งในเครื่อง
 
 **URL:** https://rtaf-supply.streamlit.app  
 **จัดทำโดย:** พ.อ.อ.กนก คงสีทอง
@@ -10,14 +10,13 @@
 
 ## ภาพรวมระบบ
 
-ระบบนี้ใช้ **NotebookLM** เป็น AI ตอบคำถาม ทำงานบน **Streamlit Cloud** โดยมี **GitHub Actions** คอยรักษา session ให้อัตโนมัติ ผู้ใช้ทุกคนเข้าถึงได้ผ่าน URL โดยไม่ต้องติดตั้งโปรแกรมใดในเครื่อง
+ระบบนี้ ทำงานบน **Streamlit Cloud** โดยมี **GitHub Actions** คอยรักษา session ให้อัตโนมัติ ผู้ใช้ทุกคนเข้าถึงได้ผ่าน URL โดยไม่ต้องติดตั้งโปรแกรมใดในเครื่อง
 
 ```
 GitHub Actions (Cloud)
     ↓ 
 cloud_keepalive.py
     ├── ดึง session จาก GitHub Gist (เข้ารหัส)
-    ├── Ping NotebookLM → ต่ออายุ Google session
     └── อัปโหลด session ที่อัปเดตกลับ Gist
             ↓
     Streamlit Cloud ดึง session จาก Gist
@@ -43,7 +42,6 @@ cloud_keepalive.py
 
 | ข้อมูล | เก็บที่ | ใครเห็นได้ |
 |---|---|---|
-| `NOTEBOOK_ID` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `GIST_ID` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `GITHUB_TOKEN` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `SESSION_ENC_KEY` | Streamlit + Actions Secrets | ผู้ดูแลระบบ |
