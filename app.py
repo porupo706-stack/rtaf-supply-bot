@@ -5,10 +5,17 @@ import requests as req
 from notebooklm import NotebookLMClient
 from cryptography.fernet import Fernet, InvalidToken
 
+from citations import CITATION_CSS, render_answer, render_sources_html
+
 # =========================================================
 # CONFIG — ดึงจาก Secrets ทั้งหมด (ไม่มีข้อมูลสำคัญใน code)
 # =========================================================
 NOTEBOOK_ID = st.secrets.get("NOTEBOOK_ID", "")
+
+# True = ดึงเนื้อหาเต็มของไฟล์มาหาบริบทรอบข้อความที่อ้างอิง (เหมือน NotebookLM แสดงย่อหน้า)
+#        ช้าลงเล็กน้อย แต่ได้ข้อความละเอียดกว่า
+# False = แสดงเฉพาะข้อความที่ NotebookLM ส่งมาให้ (เร็วกว่า)
+SHOW_CONTEXT = True
 
 # =========================================================
 # PAGE CONFIG
@@ -33,6 +40,9 @@ div[data-testid="stChatInput"] > div:focus-within {
 }
 </style>
 """, unsafe_allow_html=True)
+
+# CSS ของเลขอ้างอิง / การ์ดแหล่งข้อมูล
+st.markdown(CITATION_CSS, unsafe_allow_html=True)
 
 # =========================================================
 # HEADER
@@ -108,10 +118,61 @@ if not NOTEBOOK_ID:
 # =========================================================
 # NOTEBOOKLM
 # =========================================================
-async def get_answer(prompt: str) -> str:
+async def get_answer(prompt: str) -> dict:
+    """คืน {"answer": str, "references": [ {number, source_id, title, cited_text, context} ]}"""
     async with NotebookLMClient.from_storage() as client:
         result = await client.chat.ask(NOTEBOOK_ID, prompt)
-        return result.answer
+        raw_refs = list(getattr(result, "references", None) or [])
+
+        # ชื่อไฟล์ของแต่ละแหล่งข้อมูล
+        titles: dict[str, str] = {}
+        if raw_refs:
+            try:
+                for s in await client.sources.list(NOTEBOOK_ID):
+                    titles[s.id] = getattr(s, "title", None) or s.id
+            except Exception:
+                pass
+
+        refs: list[dict] = []
+        fulltexts: dict = {}
+        for r in raw_refs:
+            sid = getattr(r, "source_id", "") or ""
+            cited = getattr(r, "cited_text", "") or ""
+            context = ""
+
+            # หาย่อหน้ารอบข้อความที่ถูกอ้างอิงจากเนื้อหาเต็มของไฟล์
+            if SHOW_CONTEXT and sid and cited:
+                try:
+                    if sid not in fulltexts:
+                        fulltexts[sid] = await client.sources.get_fulltext(NOTEBOOK_ID, sid)
+                    ft = fulltexts[sid]
+                    if ft is not None:
+                        matches = ft.find_citation_context(cited)
+                        if matches:
+                            context = matches[0][0]
+                except Exception:
+                    fulltexts[sid] = None
+
+            refs.append({
+                "number": getattr(r, "citation_number", None) or 0,
+                "source_id": sid,
+                "title": titles.get(sid, ""),
+                "cited_text": cited,
+                "context": context,
+            })
+
+        return {"answer": result.answer, "references": refs}
+
+
+# =========================================================
+# แสดงข้อความแชท (ใช้ทั้งตอนตอบใหม่และตอนแสดงประวัติ)
+# =========================================================
+def render_message(message: dict):
+    st.markdown(message["content"], unsafe_allow_html=True)
+    refs = message.get("references") or []
+    if refs:
+        with st.expander(f"📚 แหล่งข้อมูลอ้างอิง ({len({r['number'] for r in refs})})"):
+            st.markdown(render_sources_html(refs), unsafe_allow_html=True)
 
 
 # =========================================================
@@ -161,7 +222,7 @@ if "messages" not in st.session_state:
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        render_message(message)
 
 
 # =========================================================
@@ -177,11 +238,14 @@ if user_input:
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
-                answer = asyncio.run(get_answer(user_input))
-                st.markdown(answer)
-                st.session_state.messages.append(
-                    {"role": "assistant", "content": answer}
-                )
+                data = asyncio.run(get_answer(user_input))
+                msg = {
+                    "role": "assistant",
+                    "content": render_answer(data["answer"], data["references"]),
+                    "references": data["references"],
+                }
+                render_message(msg)
+                st.session_state.messages.append(msg)
             except Exception as e:
                 if is_auth_error(e):
                     clear_gist_cache()
