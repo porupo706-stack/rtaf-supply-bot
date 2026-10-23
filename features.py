@@ -222,9 +222,28 @@ async def list_sources(notebook_id: str) -> list[SourceInfo]:
     return out
 
 
+GUIDE_PROMPT = (
+    "สรุปสาระสำคัญของเอกสารนี้ไม่เกิน 6 บรรทัด แล้วตามด้วยคำสำคัญ 8-10 คำ "
+    "ตอบด้วยภาษาเดียวกับที่ใช้เขียนเอกสารต้นฉบับเสมอ (ห้ามแปลเป็นภาษาอื่น) "
+    "ใช้หัวข้อ ## สรุป และ ## คำสำคัญ เท่านั้น ไม่ต้องมีคำนำหรือคำลงท้าย"
+)
+_CITE_MARK = re.compile(r"\s*\[\d+(?:\s*[,\-–]\s*\d+)*\]")
+
+
 async def source_guide(notebook_id: str, source_id: str) -> dict:
-    """สรุปอัตโนมัติ + คำสำคัญของไฟล์"""
+    """สรุป + คำสำคัญของไฟล์ ในภาษาเดียวกับเอกสาร
+
+    get_guide() ของ NotebookLM ตอบตามภาษาของบัญชี (อังกฤษ) จึงถามผ่านแชทโดยจำกัดเฉพาะไฟล์นี้
+    (ไม่แตะค่าภาษาของบัญชี) ถ้าถามไม่สำเร็จจะย้อนไปใช้ get_guide() เดิม
+    """
     async with NotebookLMClient.from_storage() as client:
+        try:
+            res = await client.chat.ask(notebook_id, GUIDE_PROMPT, source_ids=[source_id])
+            text = _CITE_MARK.sub("", getattr(res, "answer", "") or "").strip()
+            if text:
+                return {"summary": text, "keywords": []}
+        except Exception:
+            pass
         g = await client.sources.get_guide(notebook_id, source_id)
     return {"summary": getattr(g, "summary", "") or "", "keywords": list(getattr(g, "keywords", []) or [])}
 
