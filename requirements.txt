@@ -1,5 +1,5 @@
 streamlit
-notebooklm-py[browser]
+notebooklm-py[browser,headless]
 playwright
 PyPDF2
 pandas

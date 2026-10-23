@@ -26,6 +26,31 @@ cloud_keepalive.py
 
 ---
 
+## 🔑 ตั้งค่า Master Token (แนะนำ — session ไม่หลุดอีก)
+
+แทนที่จะรีเฟรช session ด้วยมือ ให้ใช้ **master token** ของ notebooklm-py: ไลบรารีจะ mint cookie ใหม่ให้เอง
+ทุกครั้งที่ session หมดอายุ ไม่ต้องรัน `refresh_session.bat` และไม่ต้องพึ่ง GitHub Actions keep-alive
+
+ตั้งค่าครั้งเดียวบนคอมพิวเตอร์ที่มี browser:
+
+```bash
+pip install "notebooklm-py[browser,headless]"
+notebooklm login --master-token --account อีเมลบัญชีเฉพาะกิจ@gmail.com   # เปิด browser ให้ login Google
+python export_master_token.py                                          # พิมพ์บรรทัดสำหรับวางใน Secrets
+```
+
+จากนั้นวางบรรทัด `NOTEBOOKLM_MASTER_TOKEN_JSON = '''...'''` ที่ได้ ลงใน **Streamlit → App settings → Secrets** แล้วกด **Reboot app**
+
+| เรื่อง | รายละเอียด |
+|---|---|
+| ลำดับการใช้ | master token → Gist เดิม → `NOTEBOOKLM_AUTH_JSON` (ตัวหลังเป็นข้อมูลสำรอง ถ้ามี master token จะไม่ใช้) |
+| master token หมดอายุไหม | ไม่หมดเอง และเปลี่ยนรหัสผ่านก็ไม่ทำให้ใช้ไม่ได้ — ต้องลบอุปกรณ์ที่ Google Account → Security → Your devices จึงจะเพิกถอน |
+| ความเสี่ยง | เป็น credential ของ **ทั้งบัญชี** → ใช้บัญชี Google เฉพาะกิจ แชร์ Notebook ให้บัญชีนั้นเท่านั้น ห้าม commit/แคปหน้าจอ |
+| ถ้าถูกเพิกถอน | รัน 2 คำสั่งด้านบนใหม่ แล้ววางทับ Secret |
+| GitHub Actions keep-alive | ไม่จำเป็นอีกเมื่อใช้ master token (ปิดหรือลบ `keepalive.yml` ได้) |
+
+---
+
 ## คุณสมบัติหลัก
 
 - 🤖 **AI ตอบคำถาม** — สืบค้นระเบียบการจัดซื้อจัดจ้างด้วยภาษาธรรมชาติ พร้อมเลขอ้างอิงที่กดดูต้นฉบับได้
@@ -49,6 +74,7 @@ cloud_keepalive.py
 | `GIST_ID` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `GITHUB_TOKEN` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `SESSION_ENC_KEY` | Streamlit + Actions Secrets | ผู้ดูแลระบบ |
+| `NOTEBOOKLM_MASTER_TOKEN_JSON` | Streamlit Secrets | ผู้ดูแลระบบ |
 | `ADMIN_PASSWORD` | Streamlit Secrets | ผู้ดูแลระบบ |
 | Google Session | GitHub Gist (เข้ารหัส AES) | ผู้ดูแลระบบ |
 | Source code (`app.py`) | GitHub (Public) | ทุกคน ✅ ปลอดภัย |
@@ -69,6 +95,8 @@ cloud_keepalive.py
 ```
 rtaf-supply-bot/
 ├── app.py                          # โค้ดหลัก Streamlit Cloud (หน้าถาม–ตอบ / แหล่งข้อมูล / สื่อสรุป)
+├── auth_setup.py                   # ติดตั้ง master token ให้ notebooklm-py (mint cookie เอง)
+├── export_master_token.py          # รันบนเครื่องคุณ: พิมพ์ค่าที่ต้องวางใน Secrets
 ├── features.py                     # ฟังก์ชันเรียก notebooklm-py (ไม่พึ่ง streamlit)
 ├── citations.py                    # เลขอ้างอิง + การ์ดแหล่งข้อมูล
 ├── tests/test_features.py          # ทดสอบฟังก์ชันที่ไม่ต้องใช้เครือข่าย
@@ -90,7 +118,7 @@ rtaf-supply-bot/
 | สถานการณ์ | สิ่งที่ต้องทำ |
 |---|---|
 | ปิด/เปิดเครื่องใหม่ | ไม่ต้องทำอะไร |
-| แอปขึ้น "Session หมดอายุ" | Double-click `refresh_session.bat` |
+| แอปขึ้น "Session หมดอายุ" | ถ้าใช้ master token: ออก token ใหม่ตามหัวข้อด้านบน / ถ้ายังใช้ Gist: Double-click `refresh_session.bat` |
 | GitHub Actions แสดง ❌ | ตรวจสอบ Actions tab → คลิกดู log |
 | Token หมดอายุ | สร้าง token ใหม่ → อัปเดต Secrets |
 

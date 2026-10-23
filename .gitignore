@@ -3,3 +3,5 @@ secret.txt
 *.key
 __pycache__/
 *.pyc
+master_token.json
+storage_state.json

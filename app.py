@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet, InvalidToken
 
 from citations import CITATION_CSS, render_answer, render_sources_html
 import features as ft
+from auth_setup import MasterTokenSetupError, install_master_token
 
 # =========================================================
 # CONFIG — ดึงจาก Secrets ทั้งหมด (ไม่มีข้อมูลสำคัญใน code)
@@ -87,7 +88,31 @@ def fetch_from_gist() -> str | None:
 # =========================================================
 # ตั้งค่า Auth
 # =========================================================
+@st.cache_resource(show_spinner=False)
+def ensure_master_token(master_json: str, seed_storage_json: str | None) -> str:
+    """เตรียม profile แบบ master-token ครั้งเดียวต่อ process (ล้มเหลวจะไม่ถูก cache)"""
+    return install_master_token(master_json, seed_storage_json)
+
+
 def setup_auth() -> bool:
+    """ลำดับความสำคัญ: master token (mint cookie เอง) > Gist เดิม > NOTEBOOKLM_AUTH_JSON
+
+    โหมด master token ห้ามมี NOTEBOOKLM_AUTH_JSON ค้างใน environment
+    เพราะโหมด inline ปิดการ re-mint ของไลบรารี
+    """
+    master_json = st.secrets.get("NOTEBOOKLM_MASTER_TOKEN_JSON", "")
+    if master_json:
+        try:
+            ensure_master_token(master_json, fetch_from_gist())
+            os.environ.pop("NOTEBOOKLM_AUTH_JSON", None)
+            st.session_state["auth_mode"] = "master-token"
+            return True
+        except MasterTokenSetupError as e:
+            st.warning(f"⚠️ ตั้งค่า master token ไม่สำเร็จ — ใช้ session สำรองแทน ({e})")
+        except Exception as e:
+            st.warning(f"⚠️ master token ใช้ไม่ได้ — ใช้ session สำรองแทน ({type(e).__name__})")
+
+    st.session_state["auth_mode"] = "session"
     auth_json = fetch_from_gist()
 
     if not auth_json:
@@ -207,23 +232,40 @@ def render_message(message: dict):
 # =========================================================
 if st.session_state.get("auth_expired", False):
     st.error("🔐 Session Google หมดอายุแล้ว")
-    st.markdown("""
+    if st.secrets.get("NOTEBOOKLM_MASTER_TOKEN_JSON", ""):
+        st.markdown("""
+ระบบตั้งค่า **master token** ไว้แล้ว และ mint session ใหม่เองได้ตามปกติ
+หากเห็นหน้านี้ แปลว่า master token ถูกเพิกถอน/ใช้ไม่ได้ (เช่น ถูกลบอุปกรณ์ใน Google Account)
+
+**วิธีแก้:**
+
+1. บนคอมพิวเตอร์ รัน `notebooklm login --master-token --account อีเมล`
+2. รัน `python export_master_token.py` แล้วคัดลอกผลลัพธ์
+3. วางทับ `NOTEBOOKLM_MASTER_TOKEN_JSON` ใน App settings → Secrets
+4. กด **Reboot app** แล้วกด "รีเฟรช" ด้านล่าง
+""")
+    else:
+        st.markdown("""
 **วิธีแก้ (ทำแค่นี้เดียว):**
 
 1. Double-click **`refresh_session.bat`** ในคอมพิวเตอร์
 2. Login Google บน browser ที่เปิดขึ้นมา
 3. รอจนขึ้นว่า "สำเร็จ"
 4. กดปุ่ม **"รีเฟรช"** ด้านล่าง
+
+💡 เพื่อไม่ต้องทำซ้ำอีก ให้ตั้ง master token ตามคู่มือใน README
 """)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔄 รีเฟรช", type="primary", use_container_width=True):
             clear_gist_cache()
+            ensure_master_token.clear()
             st.session_state["auth_expired"] = False
             st.rerun()
     with col2:
         if st.button("🗑️ ล้าง cache แล้วลองใหม่", use_container_width=True):
             clear_gist_cache()
+            ensure_master_token.clear()
             st.session_state["auth_expired"] = False
             st.rerun()
     st.stop()
@@ -234,7 +276,7 @@ if st.session_state.get("auth_expired", False):
 # =========================================================
 if not setup_auth():
     st.error("⚠️ ยังไม่ได้ตั้งค่า NotebookLM Authentication")
-    st.info("กรุณาตั้งค่า GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY ใน Secrets")
+    st.info("กรุณาตั้งค่า NOTEBOOKLM_MASTER_TOKEN_JSON (แนะนำ) หรือ GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY ใน Secrets")
     if st.button("🔄 ลองใหม่", use_container_width=True):
         clear_gist_cache()
         st.rerun()
