@@ -1,7 +1,4 @@
 streamlit
-notebooklm-py[browser,headless]
-playwright
-PyPDF2
-pandas
+notebooklm-py[headless]
 requests
 cryptography
