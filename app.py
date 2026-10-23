@@ -211,11 +211,6 @@ async def get_answer(prompt: str, conversation_id: str | None = None) -> dict:
         }
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def cached_starters(notebook_id: str) -> list[str]:
-    return ft.run(ft.suggest_prompts(notebook_id))
-
-
 # =========================================================
 # แสดงข้อความแชท (ใช้ทั้งตอนตอบใหม่และตอนแสดงประวัติ)
 # =========================================================
@@ -370,15 +365,9 @@ def page_chat():
         with st.chat_message(message["role"]):
             render_message(message)
 
-    # คำถามแนะนำ: ตอนเริ่มบทสนทนา = จากแหล่งข้อมูล / หลังตอบ = คำถามต่อเนื่อง
+    # หน้าแรกไม่มีคำถามแนะนำ (ให้พิมพ์ถามได้ทันที) — แสดงเฉพาะคำถามต่อเนื่องหลังมีคำตอบแล้ว
     suggestions: list[str] = []
-    if not st.session_state.messages:
-        st.caption("💡 ลองถามด้วยคำถามเหล่านี้")
-        try:
-            suggestions = cached_starters(NOTEBOOK_ID)
-        except Exception:
-            suggestions = ft.STATIC_STARTERS
-    else:
+    if st.session_state.messages:
         last = st.session_state.messages[-1]
         suggestions = last.get("next_steps") or []
         if suggestions:
