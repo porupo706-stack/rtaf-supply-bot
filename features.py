@@ -112,13 +112,6 @@ KIND_LABEL = {
     "MIND_MAP": "🧠 แผนผังความคิด",
 }
 
-STATIC_STARTERS = [
-    "สรุปสาระสำคัญของระเบียบพัสดุที่เกี่ยวข้อง",
-    "ขั้นตอนการจัดซื้อจัดจ้างโดยวิธีเฉพาะเจาะจงมีอะไรบ้าง",
-    "วงเงินและเงื่อนไขของการจัดซื้อแต่ละวิธีคืออะไร",
-]
-
-
 # =========================================================
 # ตัวช่วยทั่วไป
 # =========================================================
@@ -142,18 +135,6 @@ def _safe_filename(name: str, fallback: str = "file") -> str:
 # =========================================================
 # CHAT: คำถามแนะนำ / ส่งออก / บันทึกโน้ต
 # =========================================================
-async def suggest_prompts(notebook_id: str, limit: int = 4) -> list[str]:
-    """คำถามแนะนำที่ NotebookLM สร้างจากแหล่งข้อมูล (ล้มเหลวคืนรายการสำรอง)"""
-    try:
-        async with NotebookLMClient.from_storage() as client:
-            items = await client.notebooks.suggest_prompts(notebook_id)
-        prompts = [(getattr(p, "prompt", "") or "").strip() for p in items]
-        prompts = [p for p in prompts if p][:limit]
-        return prompts or STATIC_STARTERS
-    except Exception:
-        return STATIC_STARTERS
-
-
 def strip_html(text: str) -> str:
     """ลบแท็ก HTML ของชิปอ้างอิง เหลือเลขอ้างอิง [n] สำหรับส่งออก"""
     text = re.sub(r'<span class="cite-n">(\d+)</span>', r"[\1]", text)
