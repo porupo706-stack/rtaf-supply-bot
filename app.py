@@ -434,7 +434,11 @@ def page_sources():
             with c1:
                 if st.button("📝 สรุป + คำสำคัญ", key=f"g_{s.id}", use_container_width=True):
                     try:
-                        g = ft.run(ft.source_guide(NOTEBOOK_ID, s.id))
+                        cache = st.session_state.setdefault("guides", {})
+                        if s.id not in cache:
+                            with st.spinner("กำลังสรุป..."):
+                                cache[s.id] = ft.run(ft.source_guide(NOTEBOOK_ID, s.id))
+                        g = cache[s.id]
                         st.markdown(g["summary"] or "_ไม่มีสรุป_")
                         if g["keywords"]:
                             st.caption("คำสำคัญ: " + " · ".join(g["keywords"]))
