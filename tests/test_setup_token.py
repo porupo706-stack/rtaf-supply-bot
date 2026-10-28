@@ -78,4 +78,27 @@ assert rc == 2 and k["launch"] is None
 
 rc, k = run_main(["--account", "me@x.com"], chrome=None)   # ไม่พบ Chrome
 assert rc == 2 and k["launch"] is None
+
+# ---- โปรไฟล์: ตั้งตัวแปรสภาพแวดล้อมให้ทั้งคำสั่งล็อกอินและตัวพิมพ์ค่า Secrets
+assert st.valid_profile_name("systemB") and st.valid_profile_name("a-b_1")
+for bad in ("", "a b", "../x", "x" * 41, "ก"):
+    assert not st.valid_profile_name(bad), bad
+os.environ.pop("NOTEBOOKLM_PROFILE", None)
+seen = {}
+def fake_run(cmd): seen["env"] = os.environ.get("NOTEBOOKLM_PROFILE"); return 0
+rc, k = None, None
+orig = st.find_chrome; st.find_chrome = lambda *a, **kw: "/fake/chrome"
+try:
+    rc = st.main(["--account", "b@x.com", "--profile", "systemB"],
+                 launch=lambda c, p, d: FakeProc(), run_cmd=fake_run,
+                 export=lambda: seen.setdefault("export_env", os.environ.get("NOTEBOOKLM_PROFILE")) and 0,
+                 wait=lambda p: True)
+    assert rc == 0 and seen["env"] == "systemB" and seen["export_env"] == "systemB", seen
+    os.environ.pop("NOTEBOOKLM_PROFILE", None)
+    rc = st.main(["--account", "b@x.com", "--profile", "../x"], launch=lambda c, p, d: FakeProc(),
+                 run_cmd=fake_run, export=lambda: 0, wait=lambda p: True)
+    assert rc == 2 and "NOTEBOOKLM_PROFILE" not in os.environ
+finally:
+    st.find_chrome = orig
+    os.environ.pop("NOTEBOOKLM_PROFILE", None)
 print("setup_token OK")
