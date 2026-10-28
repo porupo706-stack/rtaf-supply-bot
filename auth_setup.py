@@ -4,7 +4,7 @@ auth_setup.py — ตั้งค่า master-token auth ของ notebooklm-p
 หลักการ (ตามเอกสาร notebooklm-py):
   • วาง `master_token.json` ไว้คู่กับ `storage_state.json` ใน profile เดียวกัน
   • เมื่อ cookie ของ Google หมดอายุ ไลบรารีจะ "mint" cookie ใหม่จาก master token เอง
-    ไม่ต้องเปิด browser / ไม่ต้องรัน refresh_session.bat / ไม่ต้องพึ่ง GitHub Actions keep-alive
+    ไม่ต้องเปิด browser /  / ไม่ต้องพึ่ง GitHub Actions keep-alive
   • ห้ามตั้ง NOTEBOOKLM_AUTH_JSON พร้อมกัน — โหมด inline นั้นปิดการ re-mint
 
 master token ไม่หมดอายุเอง และเป็น credential ของทั้งบัญชี → ใช้บัญชี Google เฉพาะกิจเท่านั้น
