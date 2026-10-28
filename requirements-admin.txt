@@ -1,0 +1,4 @@
+# สำหรับเครื่องผู้ดูแล (ใช้ตอนออกกุญแจด้วย setup_token.py เท่านั้น)
+# เซิร์ฟเวอร์ Streamlit ใช้ requirements.txt
+-r requirements.txt
+notebooklm-py[browser,headless]
