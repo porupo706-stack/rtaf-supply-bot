@@ -243,12 +243,12 @@ if st.session_state.get("auth_expired", False):
         st.markdown("""
 **วิธีแก้ (ทำแค่นี้เดียว):**
 
-1. Double-click **`refresh_session.bat`** ในคอมพิวเตอร์
-2. Login Google บน browser ที่เปิดขึ้นมา
-3. รอจนขึ้นว่า "สำเร็จ"
+1. บนคอมพิวเตอร์ รัน `python setup_token.py`
+2. ล็อกอิน Google ในหน้าต่าง Chrome ที่เปิดขึ้นมา แล้วกด I agree
+3. วางบรรทัดที่ได้ใน App settings → Secrets แล้ว Reboot app
 4. กดปุ่ม **"รีเฟรช"** ด้านล่าง
 
-💡 เพื่อไม่ต้องทำซ้ำอีก ให้ตั้ง master token ตามคู่มือใน README
+💡 รายละเอียดดูในคู่มือ README
 """)
     col1, col2 = st.columns(2)
     with col1:

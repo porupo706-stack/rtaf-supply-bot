@@ -172,8 +172,7 @@ rtaf-supply-bot/
 ├── export_master_token.py    # พิมพ์บรรทัดที่ต้องวางใน Secrets (setup_token.py เรียกให้เอง)
 ├── requirements.txt          # แพ็กเกจฝั่งเซิร์ฟเวอร์
 ├── requirements-admin.txt    # แพ็กเกจฝั่งเครื่องผู้ดูแล (ใช้กับ setup_token.py)
-├── tests/                    # ทดสอบฟังก์ชันที่ไม่ต้องใช้เครือข่าย
-└── (ระบบเดิม) cloud_keepalive.py, generate_key.py, refresh_session.py/.bat, .github/workflows/keepalive.yml
+└── tests/                    # ทดสอบฟังก์ชันที่ไม่ต้องใช้เครือข่าย
 ```
 
 รันทดสอบ: `python tests/test_features.py`, `python tests/test_auth_setup.py`, `python tests/test_setup_token.py`
@@ -207,17 +206,12 @@ rtaf-supply-bot/
 
 ---
 
-## ระบบเดิม (Gist + Keep-Alive)
+## ระบบเดิม (Gist + Keep-Alive) — ยกเลิกแล้ว
 
-ก่อนใช้กุญแจเข้าระบบ ระบบรักษา session ด้วย GitHub Actions ที่ ping ทุก 5 นาที
-และเก็บ session เข้ารหัส (Fernet) ไว้ที่ GitHub Gist แล้วให้แอปดึงไปใช้
-ไฟล์ที่เกี่ยวข้อง: `cloud_keepalive.py`, `.github/workflows/keepalive.yml`, `refresh_session.py/.bat`, `generate_key.py`
-
-ตอนนี้เก็บไว้เป็น **ตัวสำรอง** เมื่อยืนยันว่ากุญแจเข้าระบบใช้งานนิ่งแล้ว ควรเก็บกวาดดังนี้:
-1. ปิดงานตั้งเวลารีเฟรชบนคอมพิวเตอร์
-2. ลบไฟล์ข้างต้นและโค้ด Gist ใน `app.py`
-3. เพิกถอน `GITHUB_TOKEN` ที่เคยใช้ และลบ Gist
-4. ลบ `GIST_ID`, `GITHUB_TOKEN`, `SESSION_ENC_KEY` ออกจาก Streamlit Secrets และ Secrets ของ GitHub Actions
+ไฟล์ของระบบเดิม (`cloud_keepalive.py`, `refresh_session.py/.bat`, `generate_key.py`, `.github/workflows/keepalive.yml`) ถูกลบออกแล้ว
+ถ้ายังไม่ได้ทำ ให้เก็บกวาดฝั่งผู้ดูแลดังนี้:
+1. เพิกถอน `GITHUB_TOKEN` ที่เคยใช้ และลบ Gist
+2. ลบ `GIST_ID`, `GITHUB_TOKEN`, `SESSION_ENC_KEY` ออกจาก Streamlit Secrets และ Secrets ของ GitHub Actions
 
 ---
 
