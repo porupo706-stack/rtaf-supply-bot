@@ -6,6 +6,7 @@ from notebooklm import NotebookLMClient
 from cryptography.fernet import Fernet, InvalidToken
 
 from citations import CITATION_CSS, render_answer, render_sources_html
+from theme import HERO_HTML, THEME_CSS
 import features as ft
 from auth_setup import MasterTokenSetupError, install_master_token
 
@@ -33,29 +34,14 @@ st.set_page_config(
     layout="centered",
 )
 
-st.markdown("""
-<style>
-div[data-testid="stChatInput"] {
-    border-color: #4CAF50 !important;
-    border-radius: 0.5rem !important;
-}
-div[data-testid="stChatInput"]:focus-within,
-div[data-testid="stChatInput"] > div:focus-within {
-    border-color: #2E7D32 !important;
-    box-shadow: 0 0 0 1px #2E7D32 !important;
-    border-radius: 0.5rem !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # CSS ของเลขอ้างอิง / การ์ดแหล่งข้อมูล
 st.markdown(CITATION_CSS, unsafe_allow_html=True)
+st.markdown(THEME_CSS, unsafe_allow_html=True)
 
 # =========================================================
 # HEADER
 # =========================================================
-st.subheader("✈️ ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)")
-st.caption("ระบบถาม–ตอบระเบียบและเอกสารงานพัสดุ")
+st.markdown(HERO_HTML, unsafe_allow_html=True)
 
 # =========================================================
 # ดึง session จาก GitHub Gist (cache 1 ชั่วโมง)
