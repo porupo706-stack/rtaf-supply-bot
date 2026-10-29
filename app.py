@@ -212,15 +212,6 @@ def cached_sources(notebook_id: str) -> list:
         return []
 
 
-def source_groups() -> dict[str, list[str]]:
-    """หมวดเอกสารจาก Secrets: SOURCE_GROUPS = {"จัดซื้อจัดจ้าง" = ["คำในชื่อไฟล์", ...]} (ไม่ตั้งก็ได้)"""
-    try:
-        raw = st.secrets.get("SOURCE_GROUPS", {})
-        return {str(k): [str(w) for w in v] for k, v in dict(raw).items() if v}
-    except Exception:
-        return {}
-
-
 DISCLAIMER = "ข้อมูลจากเอกสารที่อัปโหลดไว้ในระบบ โปรดตรวจสอบกับระเบียบฉบับจริงก่อนดำเนินการ"
 
 
@@ -408,24 +399,6 @@ def page_chat():
                 except Exception as e:
                     handle_error(e)
 
-    # ขอบเขตการค้นหา (ค้นทุกเอกสารเป็นค่าเริ่มต้น)
-    all_sources = [s for s in cached_sources(NOTEBOOK_ID) if s.ready]
-    scope_ids = None
-    if len(all_sources) > 1:
-        groups = source_groups()
-        with st.expander("🎯 ขอบเขตการค้นหา (ไม่เลือก = ค้นทุกเอกสาร)"):
-            group = None
-            if groups:
-                group = st.selectbox("หมวดเอกสาร", ["ทั้งหมด"] + list(groups), key="scope_group")
-                group = None if group == "ทั้งหมด" else group
-            titles = st.multiselect("เลือกเฉพาะเอกสาร", [s.title for s in all_sources], key="scope_titles")
-            scope_ids = ft.resolve_scope(all_sources, groups, group, titles)
-            if scope_ids == []:
-                st.warning("ไม่พบเอกสารตรงเงื่อนไข จึงค้นทุกเอกสารแทน")
-                scope_ids = None
-            elif scope_ids:
-                st.caption(f"จะค้นเฉพาะ {len(scope_ids)} จาก {len(all_sources)} เอกสาร")
-
     last_idx = len(st.session_state.messages) - 1
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
@@ -460,7 +433,7 @@ def page_chat():
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
-                data = asyncio.run(get_answer(user_input, st.session_state.conversation_id, scope_ids))
+                data = asyncio.run(get_answer(user_input, st.session_state.conversation_id))
                 st.session_state.conversation_id = data["conversation_id"] or st.session_state.conversation_id
                 msg = {
                     "role": "assistant",

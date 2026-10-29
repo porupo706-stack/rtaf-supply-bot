@@ -234,24 +234,6 @@ def latest_update(sources: list[SourceInfo]) -> str | None:
     return thai_date(best[1]) if best else None
 
 
-def resolve_scope(sources: list[SourceInfo], groups: dict[str, list[str]] | None = None,
-                  group: str | None = None, titles: list[str] | None = None) -> list[str] | None:
-    """คืนรายการ source id ที่จะให้ค้น; None = ค้นทุกเอกสาร
-
-    group  = ชื่อหมวดใน groups (หมวด -> คำที่ต้องมีในชื่อไฟล์ อย่างน้อยหนึ่งคำ)
-    titles = เลือกเป็นรายไฟล์ (ชื่อไฟล์ตรงตัว) ถ้าเลือกทั้งสองแบบจะใช้ไฟล์ที่เข้าทั้งคู่
-    """
-    ids = {s.id for s in sources}
-    if group and groups and group in groups:
-        words = [w.lower() for w in groups[group] if w]
-        ids &= {s.id for s in sources if any(w in s.title.lower() for w in words)}
-    if titles:
-        ids &= {s.id for s in sources if s.title in set(titles)}
-    if len(ids) == len(sources):
-        return None
-    return [s.id for s in sources if s.id in ids]
-
-
 def format_feedback(question: str, answer: str, rating: str, comment: str = "") -> tuple[str, str]:
     """(หัวข้อ, เนื้อหา) ของโน้ตข้อสังเกตจากผู้ใช้"""
     mark = "👎 ไม่ตรง/ไม่ช่วย" if rating == "down" else "👍 ตรง/ช่วยได้"
