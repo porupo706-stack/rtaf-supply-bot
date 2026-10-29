@@ -45,7 +45,6 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .hero .hero-icon img {{ width: 100%; height: 100%; display:block; object-fit: cover; }}
 .hero h1 {{ margin:0; padding:0; font-size: 1.45rem; line-height:1.35; font-weight:800; color:#fff; letter-spacing:.2px; }}
 .hero .hero-sub {{ margin:.25rem 0 0 0; font-size:.95rem; color:#D5E2F7; }}
-.hero .hero-note {{ margin:.7rem 0 0 0; font-size:.74rem; color:#BCD0EE; position:relative; z-index:1; }}
 .hero .hero-tags {{ margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.4rem; position:relative; z-index:1; }}
 .hero .hero-tags span {{
   font-size:.78rem; padding:.18rem .65rem; border-radius:1rem;
@@ -130,7 +129,6 @@ HERO_HTML = """
   <div class="hero-tags">
     <span>📘 ระเบียบ/ข้อบังคับ</span><span>🔎 ค้นหาเร็ว</span><span>📌 อ้างอิงต้นฉบับ</span>
   </div>
-  <p class="hero-note">ระบบทดลองเพื่ออำนวยความสะดวก ไม่ใช่ระบบทางการของ ทอ.</p>
 </div>
 """
 HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html())

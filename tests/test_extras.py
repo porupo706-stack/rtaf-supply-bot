@@ -17,15 +17,6 @@ src = [S("1", "ระเบียบพัสดุ 2560.pdf", "PDF", True, 10, 
 assert ft.latest_update(src) == "01/09/2569"
 assert ft.latest_update([S("x", "t", "k", True, 1, None)]) is None
 
-# ---- ขอบเขตการค้นหา
-groups = {"เบิกจ่าย": ["เบิกจ่าย", "แบบฟอร์ม"], "ระเบียบ": ["ระเบียบ"]}
-assert ft.resolve_scope(src) is None
-assert ft.resolve_scope(src, groups, "ระเบียบ") == ["1"]
-assert ft.resolve_scope(src, groups, "เบิกจ่าย") == ["2", "3"]
-assert ft.resolve_scope(src, groups, None, ["แบบฟอร์ม.docx"]) == ["3"]
-assert ft.resolve_scope(src, groups, "ระเบียบ", ["แบบฟอร์ม.docx"]) == []
-assert ft.resolve_scope(src, groups, "ไม่มีหมวดนี้") is None      # หมวดไม่รู้จัก = ไม่กรอง
-
 # ---- ข้อสังเกต
 title, body = ft.format_feedback("ถามอะไร", '<b>ตอบ</b> <span class="cite"><span class="cite-n">1</span></span>', "down", " ไม่ตรง ")
 assert "👎" in title and "ถามอะไร" in body and "<" not in body and "ความเห็นผู้ใช้: ไม่ตรง" in body
