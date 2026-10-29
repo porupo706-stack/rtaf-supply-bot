@@ -185,6 +185,7 @@ class SourceInfo:
     kind: str
     ready: bool
     words: int | None
+    updated: Any = None
 
 
 async def list_sources(notebook_id: str) -> list[SourceInfo]:
@@ -199,8 +200,75 @@ async def list_sources(notebook_id: str) -> list[SourceInfo]:
             kind=getattr(kind, "name", str(kind or "")),
             ready=bool(getattr(s, "is_ready", True)),
             words=getattr(s, "word_count", None),
+            updated=getattr(s, "last_modified_at", None) or getattr(s, "created_at", None),
         ))
     return out
+
+
+def thai_date(value: Any) -> str | None:
+    """วันที่แบบ พ.ศ. (วว/ดด/ปปปป) จาก datetime หรือ timestamp วินาที/มิลลิวินาที; ไม่รู้ค่า -> None"""
+    if value is None or value == "":
+        return None
+    try:
+        if isinstance(value, datetime):
+            d = value
+        else:
+            n = float(value)
+            d = datetime.fromtimestamp(n / 1000 if n > 1e11 else n)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+    return f"{d.day:02d}/{d.month:02d}/{d.year + 543}"
+
+
+def latest_update(sources: list[SourceInfo]) -> str | None:
+    """วันที่อัปเดตล่าสุดของเอกสารทั้งหมด (พ.ศ.)"""
+    best = None
+    for s in sources:
+        v = s.updated
+        try:
+            key = v.timestamp() if isinstance(v, datetime) else float(v)
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if best is None or key > best[0]:
+            best = (key, v)
+    return thai_date(best[1]) if best else None
+
+
+def resolve_scope(sources: list[SourceInfo], groups: dict[str, list[str]] | None = None,
+                  group: str | None = None, titles: list[str] | None = None) -> list[str] | None:
+    """คืนรายการ source id ที่จะให้ค้น; None = ค้นทุกเอกสาร
+
+    group  = ชื่อหมวดใน groups (หมวด -> คำที่ต้องมีในชื่อไฟล์ อย่างน้อยหนึ่งคำ)
+    titles = เลือกเป็นรายไฟล์ (ชื่อไฟล์ตรงตัว) ถ้าเลือกทั้งสองแบบจะใช้ไฟล์ที่เข้าทั้งคู่
+    """
+    ids = {s.id for s in sources}
+    if group and groups and group in groups:
+        words = [w.lower() for w in groups[group] if w]
+        ids &= {s.id for s in sources if any(w in s.title.lower() for w in words)}
+    if titles:
+        ids &= {s.id for s in sources if s.title in set(titles)}
+    if len(ids) == len(sources):
+        return None
+    return [s.id for s in sources if s.id in ids]
+
+
+def format_feedback(question: str, answer: str, rating: str, comment: str = "") -> tuple[str, str]:
+    """(หัวข้อ, เนื้อหา) ของโน้ตข้อสังเกตจากผู้ใช้"""
+    mark = "👎 ไม่ตรง/ไม่ช่วย" if rating == "down" else "👍 ตรง/ช่วยได้"
+    title = f"ข้อสังเกต {mark} {datetime.now():%d/%m/%Y %H:%M}"
+    body = f"คำถาม: {question.strip()}\n\nคำตอบของระบบ:\n{strip_html(answer).strip()}"
+    if comment.strip():
+        body += f"\n\nความเห็นผู้ใช้: {comment.strip()}"
+    return title, body
+
+
+async def save_feedback_note(notebook_id: str, question: str, answer: str, rating: str,
+                             comment: str = "") -> str:
+    """เก็บคะแนน/ข้อสังเกตเป็น note ใน notebook (ผู้ดูแลเปิดดูใน NotebookLM ได้ ไม่หายเมื่อรีบูตแอป)"""
+    title, body = format_feedback(question, answer, rating, comment)
+    async with NotebookLMClient.from_storage() as client:
+        note = await client.notes.create(notebook_id, title, body)
+    return note.id
 
 
 GUIDE_PROMPT = (

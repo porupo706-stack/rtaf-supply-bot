@@ -1,5 +1,6 @@
 import os
 import asyncio
+import time
 import streamlit as st
 import requests as req
 from notebooklm import NotebookLMClient
@@ -145,10 +146,12 @@ if not NOTEBOOK_ID:
 # =========================================================
 # NOTEBOOKLM
 # =========================================================
-async def get_answer(prompt: str, conversation_id: str | None = None) -> dict:
+async def get_answer(prompt: str, conversation_id: str | None = None,
+                     source_ids: list[str] | None = None) -> dict:
     """คืน {"answer", "conversation_id", "next_steps", "references": [ {number, source_id, title, cited_text, context} ]}"""
     async with NotebookLMClient.from_storage() as client:
-        result = await client.chat.ask(NOTEBOOK_ID, prompt, conversation_id=conversation_id)
+        result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
+                                       conversation_id=conversation_id)
         raw_refs = list(getattr(result, "references", None) or [])
 
         # ชื่อไฟล์ของแต่ละแหล่งข้อมูล
@@ -200,8 +203,32 @@ async def get_answer(prompt: str, conversation_id: str | None = None) -> dict:
 # =========================================================
 # แสดงข้อความแชท (ใช้ทั้งตอนตอบใหม่และตอนแสดงประวัติ)
 # =========================================================
+@st.cache_data(ttl=600, show_spinner=False)
+def cached_sources(notebook_id: str) -> list:
+    """รายชื่อเอกสาร (cache 10 นาที) ใช้กับตัวเลือกขอบเขตและวันที่อัปเดต; ดึงไม่ได้ = รายการว่าง"""
+    try:
+        return ft.run(ft.list_sources(notebook_id))
+    except Exception:
+        return []
+
+
+def source_groups() -> dict[str, list[str]]:
+    """หมวดเอกสารจาก Secrets: SOURCE_GROUPS = {"จัดซื้อจัดจ้าง" = ["คำในชื่อไฟล์", ...]} (ไม่ตั้งก็ได้)"""
+    try:
+        raw = st.secrets.get("SOURCE_GROUPS", {})
+        return {str(k): [str(w) for w in v] for k, v in dict(raw).items() if v}
+    except Exception:
+        return {}
+
+
+DISCLAIMER = "ข้อมูลจากเอกสารที่อัปโหลดไว้ในระบบ โปรดตรวจสอบกับระเบียบฉบับจริงก่อนดำเนินการ"
+
+
 def render_message(message: dict):
     st.markdown(message["content"], unsafe_allow_html=True)
+    if message.get("role") == "assistant":
+        updated = ft.latest_update(cached_sources(NOTEBOOK_ID)) if NOTEBOOK_ID else None
+        st.caption(f"⚠️ {DISCLAIMER}" + (f" · เอกสารอัปเดตล่าสุด {updated}" if updated else ""))
     refs = message.get("references") or []
     if refs:
         with st.expander(f"📚 แหล่งข้อมูลอ้างอิง ({len({r['number'] for r in refs})})"):
@@ -280,6 +307,17 @@ with st.sidebar:
         if st.button("ออกจากโหมดผู้ดูแล", use_container_width=True):
             st.session_state["is_admin"] = False
             st.rerun()
+        with st.expander("🔑 สถานะระบบ"):
+            mode = st.session_state.get("auth_mode")
+            st.caption("กุญแจเข้าระบบ: " + ("master token ✅ (ต่ออายุเอง)" if mode == "master-token"
+                                            else "session สำรอง ⚠️ (อาจหมดอายุ)"))
+            if st.button("ทดสอบการเชื่อมต่อ", use_container_width=True):
+                t0 = time.monotonic()
+                try:
+                    n = len(ft.run(ft.list_sources(NOTEBOOK_ID)))
+                    st.success(f"เชื่อมต่อได้ ({n} เอกสาร, {time.monotonic() - t0:.1f} วินาที)")
+                except Exception as e:
+                    st.error(f"เชื่อมต่อไม่ได้: {type(e).__name__}")
         with st.expander("📊 โควตาการใช้งาน"):
             if st.button("ตรวจโควตา", use_container_width=True):
                 try:
@@ -318,6 +356,29 @@ def admin_only_notice():
 # =========================================================
 # หน้า 1: ถาม–ตอบ
 # =========================================================
+def feedback_buttons(idx: int):
+    """👍/👎 ใต้คำตอบล่าสุด: 👎 เก็บเป็นโน้ตใน Notebook ให้ผู้ดูแลไปปรับเอกสาร"""
+    msg = st.session_state.messages[idx]
+    if msg.get("feedback"):
+        st.caption("🙏 ขอบคุณสำหรับความเห็น")
+        return
+    c1, c2, _ = st.columns([1, 1, 4])
+    rating = "up" if c1.button("👍", key=f"fb_up_{idx}", help="คำตอบตรง/ช่วยได้") else \
+             "down" if c2.button("👎", key=f"fb_dn_{idx}", help="คำตอบไม่ตรง/ไม่ช่วย แจ้งผู้ดูแล") else None
+    if not rating:
+        return
+    question = next((m["content"] for m in reversed(st.session_state.messages[:idx])
+                     if m["role"] == "user"), "")
+    msg["feedback"] = rating
+    print(f"[feedback] {rating}: {question[:120]!r}", flush=True)   # ปรากฏใน Manage app → Logs
+    if rating == "down":
+        try:
+            ft.run(ft.save_feedback_note(NOTEBOOK_ID, question, msg["content"], rating))
+        except Exception:
+            st.toast("บันทึกความเห็นไม่สำเร็จ แต่ระบบรับทราบแล้ว", icon="⚠️")
+    st.rerun()
+
+
 def page_chat():
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("conversation_id", None)
@@ -347,9 +408,30 @@ def page_chat():
                 except Exception as e:
                     handle_error(e)
 
-    for message in st.session_state.messages:
+    # ขอบเขตการค้นหา (ค้นทุกเอกสารเป็นค่าเริ่มต้น)
+    all_sources = [s for s in cached_sources(NOTEBOOK_ID) if s.ready]
+    scope_ids = None
+    if len(all_sources) > 1:
+        groups = source_groups()
+        with st.expander("🎯 ขอบเขตการค้นหา (ไม่เลือก = ค้นทุกเอกสาร)"):
+            group = None
+            if groups:
+                group = st.selectbox("หมวดเอกสาร", ["ทั้งหมด"] + list(groups), key="scope_group")
+                group = None if group == "ทั้งหมด" else group
+            titles = st.multiselect("เลือกเฉพาะเอกสาร", [s.title for s in all_sources], key="scope_titles")
+            scope_ids = ft.resolve_scope(all_sources, groups, group, titles)
+            if scope_ids == []:
+                st.warning("ไม่พบเอกสารตรงเงื่อนไข จึงค้นทุกเอกสารแทน")
+                scope_ids = None
+            elif scope_ids:
+                st.caption(f"จะค้นเฉพาะ {len(scope_ids)} จาก {len(all_sources)} เอกสาร")
+
+    last_idx = len(st.session_state.messages) - 1
+    for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             render_message(message)
+            if message["role"] == "assistant" and i == last_idx:
+                feedback_buttons(i)
 
     # หน้าแรกไม่มีคำถามแนะนำ (ให้พิมพ์ถามได้ทันที) — แสดงเฉพาะคำถามต่อเนื่องหลังมีคำตอบแล้ว
     suggestions: list[str] = []
@@ -378,7 +460,7 @@ def page_chat():
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
-                data = asyncio.run(get_answer(user_input, st.session_state.conversation_id))
+                data = asyncio.run(get_answer(user_input, st.session_state.conversation_id, scope_ids))
                 st.session_state.conversation_id = data["conversation_id"] or st.session_state.conversation_id
                 msg = {
                     "role": "assistant",
