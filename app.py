@@ -6,7 +6,7 @@ from notebooklm import NotebookLMClient
 from cryptography.fernet import Fernet, InvalidToken
 
 from citations import CITATION_CSS, render_answer, render_sources_html
-from theme import HERO_HTML, THEME_CSS
+from theme import HERO_HTML, LOGO_PATH, THEME_CSS
 import features as ft
 from auth_setup import MasterTokenSetupError, install_master_token
 
@@ -30,7 +30,7 @@ SHOW_CONTEXT = True
 # =========================================================
 st.set_page_config(
     page_title="ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)",
-    page_icon="✈️",
+    page_icon=str(LOGO_PATH) if LOGO_PATH.exists() else "✈️",
     layout="centered",
 )
 

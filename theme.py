@@ -3,6 +3,11 @@ theme.py — หน้าตาของเว็บ (โทนฟ้าน้�
 ไม่พึ่ง streamlit จึงทดสอบแยกได้ ไม่ใช้ตราสัญลักษณ์ทางการ (ใช้ไอคอนทั่วไปเท่านั้น)
 """
 
+import base64
+from pathlib import Path
+
+LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
+
 NAVY = "#0A2A5E"
 BLUE = "#1F5FBF"
 SKY = "#E1EAF7"
@@ -32,10 +37,12 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 }}
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
 .hero .hero-icon {{
-  width: 3.1rem; height: 3.1rem; flex: 0 0 auto; display:flex; align-items:center; justify-content:center;
+  width: 3.6rem; height: 3.6rem; flex: 0 0 auto; display:flex; align-items:center; justify-content:center;
   font-size: 1.7rem; border-radius: 50%; background: rgba(255,255,255,.14);
   border: 2px solid {GOLD};
 }}
+.hero .hero-icon.has-logo {{ border-radius: .85rem; overflow: hidden; padding: 0; background: none; }}
+.hero .hero-icon img {{ width: 100%; height: 100%; display:block; object-fit: cover; }}
 .hero h1 {{ margin:0; padding:0; font-size: 1.45rem; line-height:1.35; font-weight:800; color:#fff; letter-spacing:.2px; }}
 .hero .hero-sub {{ margin:.25rem 0 0 0; font-size:.95rem; color:#D5E2F7; }}
 .hero .hero-tags {{ margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.4rem; position:relative; z-index:1; }}
@@ -101,10 +108,19 @@ div[data-testid="stExpander"] {{ background:#fff; border:1px solid #D6E1F2; bord
 </style>
 """
 
+def _logo_html() -> str:
+    """โลโก้ที่ผู้ดูแลวางไว้ที่ assets/logo.png (ฝังในหน้าเว็บ) ถ้าไม่มีไฟล์ใช้ไอคอนเครื่องบินแทน"""
+    try:
+        b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode()
+        return f'<div class="hero-icon has-logo"><img alt="โลโก้" src="data:image/png;base64,{b64}"></div>'
+    except OSError:
+        return '<div class="hero-icon">✈️</div>'
+
+
 HERO_HTML = """
 <div class="hero">
   <div class="hero-top">
-    <div class="hero-icon">✈️</div>
+    __LOGO__
     <div>
       <h1>ผู้ช่วยงานพัสดุ ของกองทัพอากาศ (ทอ.)</h1>
       <p class="hero-sub">ถาม–ตอบระเบียบและเอกสารงานพัสดุ พร้อมอ้างอิงแหล่งที่มา</p>
@@ -115,3 +131,4 @@ HERO_HTML = """
   </div>
 </div>
 """
+HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html())
