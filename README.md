@@ -96,6 +96,9 @@ NOTEBOOKLM_MASTER_TOKEN_JSON = '''วางบรรทัดที่ได้�
 - **คำถามต่อเนื่อง** — ปุ่มคำถามถัดไปที่ระบบแนะนำหลังตอบ
 - บทสนทนาต่อเนื่องและ **แยกรายผู้ใช้** (ไม่ปนกับคนอื่น)
 - **ส่งออกบทสนทนา** เป็นไฟล์ Markdown พร้อมแหล่งอ้างอิง และปุ่ม **เริ่มบทสนทนาใหม่**
+- **คำเตือนใต้คำตอบ** ให้ตรวจกับระเบียบฉบับจริง พร้อมวันที่อัปเดตเอกสารล่าสุด
+- **ปุ่ม 👍/👎** ใต้คำตอบล่าสุด — กด 👎 ระบบเก็บคำถามและคำตอบเป็นโน้ตในสมุดบันทึก (ผู้ดูแลเปิดดูได้ ไม่หายเมื่อรีบูตแอป)
+- **ขอบเขตการค้นหา** — เลือกค้นเฉพาะบางเอกสาร หรือเฉพาะหมวด (ตั้งหมวดได้ที่ `SOURCE_GROUPS`)
 
 ### 📚 แหล่งข้อมูล
 - รายการไฟล์ทั้งหมดในฐานความรู้ พร้อมชนิดไฟล์และจำนวนคำ
@@ -140,6 +143,7 @@ NOTEBOOKLM_MASTER_TOKEN_JSON = '''วางบรรทัดที่ได้�
 | `NOTEBOOK_ID` | ✅ | รหัสฐานความรู้ |
 | `NOTEBOOKLM_MASTER_TOKEN_JSON` | ✅ แนะนำ | กุญแจเข้าระบบ ได้จาก `setup_token.py` |
 | `ADMIN_PASSWORD` | แนะนำ | รหัสผู้ดูแล (ถ้าไม่ตั้ง ฟังก์ชันผู้ดูแลถูกปิด) |
+| `SOURCE_GROUPS` | ไม่บังคับ | หมวดเอกสารสำหรับตัวกรอง เช่น `[SOURCE_GROUPS]` แล้วบรรทัด `"จัดซื้อ" = ["ระเบียบ", "จัดซื้อ"]` (คำที่ต้องมีในชื่อไฟล์) |
 | `GIST_ID`, `GITHUB_TOKEN`, `SESSION_ENC_KEY` | ทางเลือก (ระบบเดิม) | ดึงการเข้าสู่ระบบจาก Gist เป็นตัวสำรอง |
 
 ลำดับที่แอปใช้เข้าสู่ระบบ: กุญแจเข้าระบบ → Gist (ระบบเดิม) → `NOTEBOOKLM_AUTH_JSON`
@@ -172,10 +176,26 @@ rtaf-supply-bot/
 ├── export_master_token.py    # พิมพ์บรรทัดที่ต้องวางใน Secrets (setup_token.py เรียกให้เอง)
 ├── requirements.txt          # แพ็กเกจฝั่งเซิร์ฟเวอร์
 ├── requirements-admin.txt    # แพ็กเกจฝั่งเครื่องผู้ดูแล (ใช้กับ setup_token.py)
+├── eval/run_eval.py          # รันชุดคำถามทดสอบความแม่น (เครื่องผู้ดูแล)
+├── scripts/wake_app.py       # ปลุกแอปที่หลับ (ใช้โดย GitHub Actions)
+├── .github/workflows/wake.yml
 └── tests/                    # ทดสอบฟังก์ชันที่ไม่ต้องใช้เครือข่าย
 ```
 
-รันทดสอบ: `python tests/test_features.py`, `python tests/test_auth_setup.py`, `python tests/test_setup_token.py`
+รันทดสอบ: `python tests/test_features.py`, `python tests/test_auth_setup.py`, `python tests/test_setup_token.py`, `python tests/test_extras.py`
+
+### ชุดคำถามทดสอบความแม่น
+
+1. คัดลอก `eval/questions.example.json` เป็น `eval/questions.json` แล้วใส่คำถามจริง พร้อมคำ/ตัวเลขที่คำตอบต้องมี (`expect_any`, `expect_all`) จากระเบียบฉบับจริง
+2. รันบนเครื่องผู้ดูแล: `python eval/run_eval.py --questions eval/questions.json --notebook รหัสสมุดบันทึก`
+   (ถ้าออกกุญแจแบบมีโปรไฟล์ ใส่ `--profile ชื่อ`) ได้ไฟล์รายงาน `eval-report.md`
+3. รันซ้ำทุกครั้งที่เพิ่ม/แก้เอกสาร เพื่อดูว่าคำตอบเดิมยังถูกอยู่
+
+### ป้องกันแอปหลับ
+
+`.github/workflows/wake.yml` เปิดหน้าเว็บด้วยเบราว์เซอร์ทุก 6 ชั่วโมงและกดปุ่มปลุกให้ ใช้ได้เลยหลัง merge
+(ถ้าเปลี่ยน URL แอป ตั้ง Variable `APP_URL` ใน Settings → Secrets and variables → Actions → Variables)
+GitHub จะหยุดงานตั้งเวลาถ้า repo ไม่มีกิจกรรม 60 วัน ให้กด Run workflow เพื่อเปิดใหม่
 
 ---
 
