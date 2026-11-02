@@ -12,6 +12,7 @@ import hmac
 import json
 import re
 import tempfile
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -167,22 +168,77 @@ def chat_to_markdown(messages: list[dict], title: str = "บทสนทนา �
     return "\n".join(lines)
 
 
-async def trim_history(client, notebook_id: str, max_turns: int) -> bool:
-    """ล้างประวัติแชตฝั่งเซิร์ฟเวอร์ (เหมือนปุ่ม "ลบประวัติการแชท") เมื่อสะสมครบ max_turns คำถาม
+# ---------------------------------------------------------
+# ถามแบบแยกผู้ใช้
+# ---------------------------------------------------------
+# ผู้ใช้ทุกคนใช้สมุดบันทึกเดียวกัน และ NotebookLM ต่อทุกคำถามเข้ากับ "บทสนทนาล่าสุด" ร่วมกัน
+# เพื่อไม่ให้คำถามของคนหนึ่งไปปนกับอีกคน: (1) ถามทีละคำถาม (ล็อก) (2) ลบบทสนทนาทันทีหลังได้คำตอบ
+# (3) บริบทต่อเนื่องของแต่ละคนแนบไปกับคำถามจากฝั่งแอปแทน
+_ASK_LOCK = threading.Lock()
+_fresh = False   # True = รู้ว่าสมุดบันทึกไม่มีบทสนทนาค้าง
 
-    คืน True ถ้าล้างแล้ว; max_turns <= 0 = ปิดฟังก์ชัน
-    ผู้ใช้ทุกคนใช้บทสนทนาล่าสุดของสมุดบันทึกเดียวกัน จึงนับจากเซิร์ฟเวอร์ ไม่ใช่ตัวนับในแอป (ไม่หายเมื่อแอปรีสตาร์ท)
-    """
-    if max_turns <= 0:
-        return False
-    history = await client.chat.get_history(notebook_id, limit=max_turns + 5)
-    if len(history) < max_turns:
-        return False
+
+def history_pairs(messages: list[dict]) -> list[tuple[str, str]]:
+    """คู่ (คำถาม, คำตอบล้วน) ของผู้ใช้คนนี้จากประวัติหน้าจอ"""
+    out, q = [], None
+    for m in messages:
+        if m.get("role") == "user":
+            q = m.get("content", "")
+        elif m.get("role") == "assistant" and q is not None and m.get("answer_plain"):
+            out.append((q, m["answer_plain"]))
+            q = None
+    return out
+
+
+def build_prompt(question: str, history: list[tuple[str, str]] | None,
+                 max_turns: int = 3, max_chars: int = 500) -> str:
+    """แนบบริบทบทสนทนาก่อนหน้าของผู้ใช้คนเดียวกัน (ไม่มีประวัติ = ส่งคำถามเดิม)"""
+    turns = (history or [])[-max_turns:]
+    if not turns:
+        return question
+    lines = ["บริบทบทสนทนาก่อนหน้าของผู้ใช้คนนี้ (ใช้เมื่อเกี่ยวข้องกับคำถามปัจจุบันเท่านั้น):"]
+    for q, a in turns:
+        a = _CITE_MARK.sub("", strip_html(a)).strip()
+        lines.append(f"ถาม: {q.strip()}\nตอบ: {a[:max_chars]}")
+    lines += ["", f"คำถามปัจจุบัน: {question.strip()}"]
+    return "\n".join(lines)
+
+
+async def _drop_current(client, notebook_id: str) -> None:
     cid = await client.chat.get_conversation_id(notebook_id)
-    if not cid:
-        return False
-    await client.chat.delete_conversation(notebook_id, cid)
-    return True
+    if cid:
+        await client.chat.delete_conversation(notebook_id, cid)
+
+
+async def ask_isolated(client, notebook_id: str, prompt: str):
+    """ถามโดยไม่ต่อกับบทสนทนาของคนอื่น แล้วลบบทสนทนาทิ้ง คืนผลลัพธ์ของ chat.ask"""
+    global _fresh
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _ASK_LOCK.acquire)
+    try:
+        if not _fresh:                       # ครั้งแรก/หลังลบพลาด: เคลียร์บทสนทนาเก่าที่ค้างก่อน
+            try:
+                await _drop_current(client, notebook_id)
+                _fresh = True
+            except Exception:
+                pass                         # ลบไม่ได้ก็ยังตอบต่อ (ลองใหม่คำถามหน้า)
+        try:
+            result = await client.chat.ask(notebook_id, prompt)
+        except Exception:
+            _fresh = False
+            raise
+        try:
+            cid = getattr(result, "conversation_id", None)
+            if cid:
+                await client.chat.delete_conversation(notebook_id, cid)
+            else:
+                await _drop_current(client, notebook_id)
+            _fresh = True
+        except Exception:
+            _fresh = False
+        return result
+    finally:
+        _ASK_LOCK.release()
 
 
 async def clear_history(notebook_id: str) -> bool:
