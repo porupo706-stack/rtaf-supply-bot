@@ -251,12 +251,65 @@ async def clear_history(notebook_id: str) -> bool:
         return True
 
 
-async def save_chat_as_note(notebook_id: str, messages: list[dict], title: str | None = None) -> str:
-    """บันทึกทั้งบทสนทนาเป็น note ใน notebook (ผู้ดูแลเท่านั้น) คืน note id"""
-    title = title or f"บทสนทนา {datetime.now():%d/%m/%Y %H:%M}"
-    async with NotebookLMClient.from_storage() as client:
-        note = await client.notes.create(notebook_id, title, chat_to_markdown(messages, title))
-    return note.id
+FONT_DIR = Path(__file__).parent / "assets" / "fonts"
+_CELL_END = {"new_x": "LMARGIN", "new_y": "NEXT", "align": "L"}
+
+
+def chat_to_pdf_bytes(messages: list[dict], title: str = "บทสนทนา ผู้ช่วยงานพัสดุ ทอ.") -> bytes:
+    """สร้างไฟล์ PDF ของบทสนทนา (ฟอนต์ Noto Sans Thai, OFL) ทำในเครื่องทั้งหมด ไม่ส่งข้อมูลไปที่ไหน"""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.add_font("Thai", "", str(FONT_DIR / "NotoSansThai-Regular.ttf"))
+    pdf.add_font("Thai", "B", str(FONT_DIR / "NotoSansThai-Bold.ttf"))
+
+    pdf.set_font("Thai", "B", 16)
+    pdf.multi_cell(0, 10, title, **_CELL_END)
+    pdf.set_font("Thai", "", 10)
+    pdf.set_text_color(110, 110, 110)
+    pdf.multi_cell(0, 6, f"ส่งออกเมื่อ {datetime.now():%d/%m/%Y %H:%M}", **_CELL_END)
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(2)
+
+    for m in messages:
+        pdf.set_font("Thai", "B", 12)
+        if m["role"] == "user":
+            pdf.set_text_color(20, 60, 140)
+            pdf.multi_cell(0, 8, "คำถาม", **_CELL_END)
+            pdf.set_text_color(0, 0, 0)
+            pdf.set_font("Thai", "", 12)
+            pdf.multi_cell(0, 7, m["content"], **_CELL_END)
+            pdf.ln(3)
+            continue
+
+        pdf.set_text_color(20, 120, 60)
+        pdf.multi_cell(0, 8, "คำตอบ", **_CELL_END)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Thai", "", 12)
+        pdf.multi_cell(0, 7, strip_html(m["content"]), **_CELL_END)
+
+        refs = m.get("references") or []
+        if refs:
+            pdf.ln(1)
+            pdf.set_font("Thai", "B", 10)
+            pdf.multi_cell(0, 6, "แหล่งอ้างอิง", **_CELL_END)
+            pdf.set_font("Thai", "", 10)
+            pdf.set_text_color(90, 90, 90)
+            seen = set()
+            for r in sorted(refs, key=lambda x: int(x.get("number") or 0)):
+                key = (r.get("number"), r.get("source_id"), r.get("cited_text"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                cited = (r.get("cited_text") or "").strip().replace("\n", " ")
+                line = f"[{r.get('number')}] {r.get('title') or 'แหล่งข้อมูล'}: “{cited[:300]}”"
+                pdf.multi_cell(0, 5.5, line, **_CELL_END)
+            pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+
+    return bytes(pdf.output())
 
 
 # =========================================================

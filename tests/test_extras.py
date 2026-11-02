@@ -105,4 +105,14 @@ d = ft.describe_window({"kind": "FIVE_HOUR", "used": 70.4, "remaining": None, "r
 assert d["title"] == "ปริมาณการใช้ AI ปัจจุบัน" and round(d["used"]) == 70 and round(d["remaining"]) == 30 and d["reset"] is None
 assert ft.describe_window({"kind": "WEEKLY", "used": 16, "remaining": 84})["title"] == "ขีดจำกัดรายสัปดาห์"
 assert ft.describe_window({"kind": "X", "used": 150})["used"] == 100.0 and ft.describe_window({"kind": "X"})["used"] == 0.0
+
+# ---- ส่งออก PDF (ฟอนต์ไทยในเครื่อง ไม่ต้องต่อเน็ต)
+pdf_msgs = [
+    {"role": "user", "content": "ขั้นตอนการเบิกจ่ายพัสดุมีอะไรบ้าง"},
+    {"role": "assistant", "content": 'ต้องยื่นใบเบิก <span class="cite"><span class="cite-n">1</span></span> ตามระเบียบ',
+     "references": [{"number": 1, "source_id": "s1", "title": "ระเบียบพัสดุ.pdf", "cited_text": "ข้อ 5"}]},
+]
+pdf_bytes = ft.chat_to_pdf_bytes(pdf_msgs)
+assert pdf_bytes.startswith(b"%PDF") and len(pdf_bytes) > 1000
+assert ft.chat_to_pdf_bytes([]).startswith(b"%PDF")   # บทสนทนาว่างก็ต้องไม่พัง
 print("extras OK")

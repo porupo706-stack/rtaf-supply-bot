@@ -409,12 +409,18 @@ def page_chat():
                 use_container_width=True,
             )
         with c3:
-            if IS_ADMIN and st.button("💾 บันทึกเป็นโน้ต", use_container_width=True):
-                try:
-                    ft.run(ft.save_chat_as_note(NOTEBOOK_ID, st.session_state.messages))
-                    st.toast("บันทึกบทสนทนาเป็นโน้ตใน Notebook แล้ว", icon="✅")
-                except Exception as e:
-                    handle_error(e)
+            try:
+                pdf_bytes = ft.chat_to_pdf_bytes(st.session_state.messages)
+            except Exception:
+                pdf_bytes = None
+            st.download_button(
+                "📄 ดาวน์โหลด PDF",
+                data=pdf_bytes or b"",
+                file_name="rtaf-supply-chat.pdf",
+                mime="application/pdf",
+                disabled=pdf_bytes is None,
+                use_container_width=True,
+            )
 
     last_idx = len(st.session_state.messages) - 1
     for i, message in enumerate(st.session_state.messages):
