@@ -92,4 +92,17 @@ assert r.answer == "ตอบ x" and ft._fresh is False
 srv.fail = False
 asyncio.run(ft.ask_isolated(srv, "nb", "y"))               # คำถามถัดไปเคลียร์ของค้างก่อนถาม
 assert srv.seen[-1] == ("y", 0) and srv.cid is None and ft._fresh is True
+
+# ---- โควตา (แสดงแบบเดียวกับ NotebookLM)
+from datetime import timezone, timedelta
+th = timezone(timedelta(hours=7))
+now = datetime(2026, 11, 2, 10, 40, tzinfo=th)
+assert ft.format_reset(datetime(2026, 11, 2, 12, 28, tzinfo=th), now) == "รีเซ็ตเวลา 12:28 (อีก 1 ชม. 48 นาที)"
+assert ft.format_reset(datetime(2026, 11, 6, 10, 28, tzinfo=th), now).startswith("รีเซ็ตในวันที่ 6 พ.ย. เวลา 10:28 (อีก 3 วัน")
+assert ft.format_reset(datetime(2026, 11, 2, 5, 28, tzinfo=timezone.utc), now).startswith("รีเซ็ตเวลา 12:28")   # UTC -> เวลาไทย
+assert ft.format_reset(None, now) is None and ft.format_reset("x", now) is None
+d = ft.describe_window({"kind": "FIVE_HOUR", "used": 70.4, "remaining": None, "resets_at": None}, now)
+assert d["title"] == "ปริมาณการใช้ AI ปัจจุบัน" and round(d["used"]) == 70 and round(d["remaining"]) == 30 and d["reset"] is None
+assert ft.describe_window({"kind": "WEEKLY", "used": 16, "remaining": 84})["title"] == "ขีดจำกัดรายสัปดาห์"
+assert ft.describe_window({"kind": "X", "used": 150})["used"] == 100.0 and ft.describe_window({"kind": "X"})["used"] == 0.0
 print("extras OK")
