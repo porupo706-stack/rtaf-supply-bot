@@ -26,6 +26,12 @@ MAX_LOGIN_ATTEMPTS = 5
 # False = แสดงเฉพาะข้อความที่ NotebookLM ส่งมาให้ (เร็วกว่า)
 SHOW_CONTEXT = True
 
+# ล้างประวัติแชตใน Notebook ทุกครบกี่คำถาม (ตั้งค่าได้ที่ Secrets: CLEAN_HISTORY_EVERY, 0 = ปิด)
+try:
+    CLEAN_EVERY = int(st.secrets.get("CLEAN_HISTORY_EVERY", 50))
+except Exception:
+    CLEAN_EVERY = 50
+
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -150,8 +156,15 @@ async def get_answer(prompt: str, conversation_id: str | None = None,
                      source_ids: list[str] | None = None) -> dict:
     """คืน {"answer", "conversation_id", "next_steps", "references": [ {number, source_id, title, cited_text, context} ]}"""
     async with NotebookLMClient.from_storage() as client:
-        result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
-                                       conversation_id=conversation_id)
+        try:
+            result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
+                                           conversation_id=conversation_id)
+        except Exception:
+            if not conversation_id:
+                raise
+            # บทสนทนาเดิมถูกล้างไปแล้ว (เช่น ครบจำนวนคำถาม) -> เริ่มบทสนทนาใหม่
+            result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
+                                           conversation_id=None)
         raw_refs = list(getattr(result, "references", None) or [])
 
         # ชื่อไฟล์ของแต่ละแหล่งข้อมูล
@@ -192,9 +205,17 @@ async def get_answer(prompt: str, conversation_id: str | None = None,
             })
 
         next_steps = [getattr(n, "question", "") for n in (getattr(result, "next_steps", None) or [])]
+
+        # ครบจำนวนคำถาม -> ล้างประวัติแชต (ล้มเหลวก็ไม่กระทบคำตอบ)
+        cleared = False
+        try:
+            cleared = await ft.trim_history(client, NOTEBOOK_ID, CLEAN_EVERY)
+        except Exception:
+            pass
         return {
             "answer": result.answer,
-            "conversation_id": getattr(result, "conversation_id", None),
+            "conversation_id": None if cleared else getattr(result, "conversation_id", None),
+            "history_cleared": cleared,
             "next_steps": [q for q in next_steps if q][:3],
             "references": refs,
         }
@@ -302,6 +323,13 @@ with st.sidebar:
             mode = st.session_state.get("auth_mode")
             st.caption("กุญแจเข้าระบบ: " + ("master token ✅ (ต่ออายุเอง)" if mode == "master-token"
                                             else "session สำรอง ⚠️ (อาจหมดอายุ)"))
+            if st.button("🧹 ล้างประวัติแชตใน Notebook ตอนนี้", use_container_width=True):
+                try:
+                    done = ft.run(ft.clear_history(NOTEBOOK_ID))
+                    st.session_state["conversation_id"] = None
+                    st.success("ล้างประวัติแล้ว" if done else "ยังไม่มีประวัติให้ล้าง")
+                except Exception as e:
+                    st.error(f"ล้างไม่สำเร็จ: {type(e).__name__}")
             if st.button("ทดสอบการเชื่อมต่อ", use_container_width=True):
                 t0 = time.monotonic()
                 try:
@@ -434,7 +462,11 @@ def page_chat():
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
                 data = asyncio.run(get_answer(user_input, st.session_state.conversation_id))
-                st.session_state.conversation_id = data["conversation_id"] or st.session_state.conversation_id
+                if data.get("history_cleared"):
+                    st.session_state.conversation_id = None
+                    st.toast(f"ล้างประวัติแชตใน Notebook แล้ว (ครบ {CLEAN_EVERY} คำถาม)", icon="🧹")
+                else:
+                    st.session_state.conversation_id = data["conversation_id"] or st.session_state.conversation_id
                 msg = {
                     "role": "assistant",
                     "content": render_answer(data["answer"], data["references"]),
