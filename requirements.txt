@@ -2,3 +2,4 @@ streamlit
 notebooklm-py[headless]
 requests
 cryptography
+fpdf2
