@@ -316,7 +316,7 @@ with st.sidebar:
                     st.success(f"เชื่อมต่อได้ ({n} เอกสาร, {time.monotonic() - t0:.1f} วินาที)")
                 except Exception as e:
                     st.error(f"เชื่อมต่อไม่ได้: {type(e).__name__}")
-        with st.expander("📊 โควตาการใช้งาน (เหมือนหน้า NotebookLM)"):
+        with st.expander("📊 โควตาการใช้งาน"):
             if st.button("🔄 ตรวจโควตา", use_container_width=True):
                 try:
                     st.session_state["usage"] = ft.run(ft.get_usage()) or {"windows": []}
