@@ -167,6 +167,34 @@ def chat_to_markdown(messages: list[dict], title: str = "บทสนทนา �
     return "\n".join(lines)
 
 
+async def trim_history(client, notebook_id: str, max_turns: int) -> bool:
+    """ล้างประวัติแชตฝั่งเซิร์ฟเวอร์ (เหมือนปุ่ม "ลบประวัติการแชท") เมื่อสะสมครบ max_turns คำถาม
+
+    คืน True ถ้าล้างแล้ว; max_turns <= 0 = ปิดฟังก์ชัน
+    ผู้ใช้ทุกคนใช้บทสนทนาล่าสุดของสมุดบันทึกเดียวกัน จึงนับจากเซิร์ฟเวอร์ ไม่ใช่ตัวนับในแอป (ไม่หายเมื่อแอปรีสตาร์ท)
+    """
+    if max_turns <= 0:
+        return False
+    history = await client.chat.get_history(notebook_id, limit=max_turns + 5)
+    if len(history) < max_turns:
+        return False
+    cid = await client.chat.get_conversation_id(notebook_id)
+    if not cid:
+        return False
+    await client.chat.delete_conversation(notebook_id, cid)
+    return True
+
+
+async def clear_history(notebook_id: str) -> bool:
+    """ล้างประวัติแชตของสมุดบันทึกทันที (ผู้ดูแล) คืน True ถ้ามีบทสนทนาให้ล้าง"""
+    async with NotebookLMClient.from_storage() as client:
+        cid = await client.chat.get_conversation_id(notebook_id)
+        if not cid:
+            return False
+        await client.chat.delete_conversation(notebook_id, cid)
+        return True
+
+
 async def save_chat_as_note(notebook_id: str, messages: list[dict], title: str | None = None) -> str:
     """บันทึกทั้งบทสนทนาเป็น note ใน notebook (ผู้ดูแลเท่านั้น) คืน note id"""
     title = title or f"บทสนทนา {datetime.now():%d/%m/%Y %H:%M}"

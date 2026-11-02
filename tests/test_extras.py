@@ -33,4 +33,19 @@ res = [{"q": "a", "answer": "x", "citations": 1, "status": "PASS", "why": []},
        {"q": "b", "answer": "y", "citations": 0, "status": "FAIL", "why": ["เหตุ"]},
        {"q": "c", "answer": "z", "citations": 0, "status": "MANUAL", "why": []}]
 assert ev.summarize(res)["accuracy"] == 0.5 and "ความแม่น 50%" in ev.render_report(res)
+
+# ---- ล้างประวัติแชตเมื่อครบจำนวน (ไคลเอนต์จำลอง)
+import asyncio
+class _Chat:
+    def __init__(self, n): self.n, self.deleted = n, []
+    async def get_history(self, nb, limit=100, conversation_id=None): return [("q", "a")] * min(self.n, limit)
+    async def get_conversation_id(self, nb): return "c1" if self.n else None
+    async def delete_conversation(self, nb, cid): self.deleted.append(cid)
+class _Client:
+    def __init__(self, n): self.chat = _Chat(n)
+run = asyncio.run
+c = _Client(49); assert run(ft.trim_history(c, "nb", 50)) is False and c.chat.deleted == []
+c = _Client(50); assert run(ft.trim_history(c, "nb", 50)) is True and c.chat.deleted == ["c1"]
+c = _Client(80); assert run(ft.trim_history(c, "nb", 50)) is True        # เกินกำหนดก็ล้าง
+c = _Client(99); assert run(ft.trim_history(c, "nb", 0)) is False and c.chat.deleted == []   # 0 = ปิด
 print("extras OK")
