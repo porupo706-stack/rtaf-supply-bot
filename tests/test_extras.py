@@ -34,18 +34,62 @@ res = [{"q": "a", "answer": "x", "citations": 1, "status": "PASS", "why": []},
        {"q": "c", "answer": "z", "citations": 0, "status": "MANUAL", "why": []}]
 assert ev.summarize(res)["accuracy"] == 0.5 and "ความแม่น 50%" in ev.render_report(res)
 
-# ---- ล้างประวัติแชตเมื่อครบจำนวน (ไคลเอนต์จำลอง)
-import asyncio
-class _Chat:
-    def __init__(self, n): self.n, self.deleted = n, []
-    async def get_history(self, nb, limit=100, conversation_id=None): return [("q", "a")] * min(self.n, limit)
-    async def get_conversation_id(self, nb): return "c1" if self.n else None
-    async def delete_conversation(self, nb, cid): self.deleted.append(cid)
-class _Client:
-    def __init__(self, n): self.chat = _Chat(n)
-run = asyncio.run
-c = _Client(49); assert run(ft.trim_history(c, "nb", 50)) is False and c.chat.deleted == []
-c = _Client(50); assert run(ft.trim_history(c, "nb", 50)) is True and c.chat.deleted == ["c1"]
-c = _Client(80); assert run(ft.trim_history(c, "nb", 50)) is True        # เกินกำหนดก็ล้าง
-c = _Client(99); assert run(ft.trim_history(c, "nb", 0)) is False and c.chat.deleted == []   # 0 = ปิด
+# ---- ถามแบบแยกผู้ใช้
+import asyncio, threading, types
+msgs = [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "<b>html</b>", "answer_plain": "a1 [1]"},
+        {"role": "user", "content": "q2"}, {"role": "assistant", "content": "x"}]      # ข้อสุดท้ายไม่มี answer_plain
+assert ft.history_pairs(msgs) == [("q1", "a1 [1]")]
+assert ft.build_prompt("คำถามใหม่", []) == "คำถามใหม่" and ft.build_prompt("คำถามใหม่", None) == "คำถามใหม่"
+p = ft.build_prompt("ข้อใหม่", [("ก", "ตอบก [1, 2] " + "ย" * 900)] * 5)
+assert p.count("ถาม: ก") == 3 and "[1, 2]" not in p and "ข้อใหม่" in p.rsplit("คำถามปัจจุบัน:", 1)[1]
+assert "ย" * 501 not in p
+
+
+class FakeServer:
+    """จำลอง NotebookLM: ask ที่ไม่ระบุ conversation_id จะต่อท้ายบทสนทนาล่าสุดของสมุดบันทึกร่วมกัน"""
+    def __init__(self, leftover=0):
+        self.turns = [("เก่า", "เก่า")] * leftover
+        self.cid = "old" if leftover else None
+        self.n = 0; self.active = 0; self.max_active = 0; self.seen = []
+        outer = self
+        class Chat:
+            async def get_conversation_id(self, nb): return outer.cid
+            async def delete_conversation(self, nb, cid):
+                assert cid == outer.cid; outer.cid, outer.turns = None, []
+            async def ask(self, nb, q, **kw):
+                assert "conversation_id" not in kw
+                outer.active += 1; outer.max_active = max(outer.max_active, outer.active)
+                outer.seen.append((q, len(outer.turns)))           # ก่อนถามมีประวัติของคนอื่นค้างกี่ข้อ
+                await asyncio.sleep(0.02)
+                if outer.cid is None:
+                    outer.n += 1; outer.cid = f"c{outer.n}"
+                outer.turns.append((q, "a")); outer.active -= 1
+                return types.SimpleNamespace(answer="ตอบ " + q, conversation_id=outer.cid)
+        self.chat = Chat()
+
+
+ft._fresh = False
+srv = FakeServer(leftover=7)                              # มีบทสนทนาเก่าค้างอยู่แล้ว
+def worker(i):
+    asyncio.run(ft.ask_isolated(srv, "nb", f"q{i}"))
+ths = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
+[t.start() for t in ths]; [t.join() for t in ths]
+assert srv.max_active == 1, "ต้องถามทีละคำถาม"
+assert [n for _, n in srv.seen] == [0] * 6, srv.seen      # ทุกคำถามเริ่มจากบทสนทนาว่าง (ไม่เห็นของคนอื่น/ของเก่า)
+assert srv.cid is None and ft._fresh is True              # ลบทิ้งหลังตอบ
+
+class FlakyDelete(FakeServer):
+    def __init__(self):
+        super().__init__(); real = self.chat.delete_conversation; self.fail = True
+        async def bad(nb, cid):
+            if self.fail: raise RuntimeError("net")
+            await real(nb, cid)
+        self.chat.delete_conversation = bad
+ft._fresh = True
+srv = FlakyDelete()
+r = asyncio.run(ft.ask_isolated(srv, "nb", "x"))           # ลบพลาดก็ยังได้คำตอบ แต่ต้องรู้ว่าสกปรก
+assert r.answer == "ตอบ x" and ft._fresh is False
+srv.fail = False
+asyncio.run(ft.ask_isolated(srv, "nb", "y"))               # คำถามถัดไปเคลียร์ของค้างก่อนถาม
+assert srv.seen[-1] == ("y", 0) and srv.cid is None and ft._fresh is True
 print("extras OK")

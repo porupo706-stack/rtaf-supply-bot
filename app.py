@@ -26,12 +26,6 @@ MAX_LOGIN_ATTEMPTS = 5
 # False = แสดงเฉพาะข้อความที่ NotebookLM ส่งมาให้ (เร็วกว่า)
 SHOW_CONTEXT = True
 
-# ล้างประวัติแชตใน Notebook ทุกครบกี่คำถาม (ตั้งค่าได้ที่ Secrets: CLEAN_HISTORY_EVERY, 0 = ปิด)
-try:
-    CLEAN_EVERY = int(st.secrets.get("CLEAN_HISTORY_EVERY", 50))
-except Exception:
-    CLEAN_EVERY = 50
-
 # =========================================================
 # PAGE CONFIG
 # =========================================================
@@ -152,19 +146,13 @@ if not NOTEBOOK_ID:
 # =========================================================
 # NOTEBOOKLM
 # =========================================================
-async def get_answer(prompt: str, conversation_id: str | None = None,
-                     source_ids: list[str] | None = None) -> dict:
-    """คืน {"answer", "conversation_id", "next_steps", "references": [ {number, source_id, title, cited_text, context} ]}"""
+async def get_answer(prompt: str, history: list[tuple[str, str]] | None = None) -> dict:
+    """คืน {"answer", "next_steps", "references": [ {number, source_id, title, cited_text, context} ]}
+
+    ถามแบบแยกผู้ใช้ (ดู features.ask_isolated): บริบทต่อเนื่องมาจาก history ของผู้ใช้คนนี้เท่านั้น
+    """
     async with NotebookLMClient.from_storage() as client:
-        try:
-            result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
-                                           conversation_id=conversation_id)
-        except Exception:
-            if not conversation_id:
-                raise
-            # บทสนทนาเดิมถูกล้างไปแล้ว (เช่น ครบจำนวนคำถาม) -> เริ่มบทสนทนาใหม่
-            result = await client.chat.ask(NOTEBOOK_ID, prompt, source_ids=source_ids or None,
-                                           conversation_id=None)
+        result = await ft.ask_isolated(client, NOTEBOOK_ID, ft.build_prompt(prompt, history))
         raw_refs = list(getattr(result, "references", None) or [])
 
         # ชื่อไฟล์ของแต่ละแหล่งข้อมูล
@@ -206,16 +194,8 @@ async def get_answer(prompt: str, conversation_id: str | None = None,
 
         next_steps = [getattr(n, "question", "") for n in (getattr(result, "next_steps", None) or [])]
 
-        # ครบจำนวนคำถาม -> ล้างประวัติแชต (ล้มเหลวก็ไม่กระทบคำตอบ)
-        cleared = False
-        try:
-            cleared = await ft.trim_history(client, NOTEBOOK_ID, CLEAN_EVERY)
-        except Exception:
-            pass
         return {
             "answer": result.answer,
-            "conversation_id": None if cleared else getattr(result, "conversation_id", None),
-            "history_cleared": cleared,
             "next_steps": [q for q in next_steps if q][:3],
             "references": refs,
         }
@@ -326,7 +306,6 @@ with st.sidebar:
             if st.button("🧹 ล้างประวัติแชตใน Notebook ตอนนี้", use_container_width=True):
                 try:
                     done = ft.run(ft.clear_history(NOTEBOOK_ID))
-                    st.session_state["conversation_id"] = None
                     st.success("ล้างประวัติแล้ว" if done else "ยังไม่มีประวัติให้ล้าง")
                 except Exception as e:
                     st.error(f"ล้างไม่สำเร็จ: {type(e).__name__}")
@@ -400,7 +379,6 @@ def feedback_buttons(idx: int):
 
 def page_chat():
     st.session_state.setdefault("messages", [])
-    st.session_state.setdefault("conversation_id", None)
     st.session_state.setdefault("pending_prompt", None)
 
     # ปุ่มจัดการบทสนทนา
@@ -409,7 +387,6 @@ def page_chat():
         with c1:
             if st.button("🧹 เริ่มบทสนทนาใหม่", use_container_width=True):
                 st.session_state.messages = []
-                st.session_state.conversation_id = None
                 st.rerun()
         with c2:
             st.download_button(
@@ -454,6 +431,7 @@ def page_chat():
     if not user_input:
         return
 
+    history = ft.history_pairs(st.session_state.messages)   # ก่อนเพิ่มคำถามปัจจุบัน
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.markdown(user_input)
@@ -461,15 +439,11 @@ def page_chat():
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
-                data = asyncio.run(get_answer(user_input, st.session_state.conversation_id))
-                if data.get("history_cleared"):
-                    st.session_state.conversation_id = None
-                    st.toast(f"ล้างประวัติแชตใน Notebook แล้ว (ครบ {CLEAN_EVERY} คำถาม)", icon="🧹")
-                else:
-                    st.session_state.conversation_id = data["conversation_id"] or st.session_state.conversation_id
+                data = asyncio.run(get_answer(user_input, history))
                 msg = {
                     "role": "assistant",
                     "content": render_answer(data["answer"], data["references"]),
+                    "answer_plain": data["answer"],
                     "references": data["references"],
                     "next_steps": data["next_steps"],
                 }
