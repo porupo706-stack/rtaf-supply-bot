@@ -14,7 +14,7 @@ import re
 import tempfile
 import threading
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -551,6 +551,56 @@ def tree_to_markdown(node: dict, depth: int = 0) -> str:
 # =========================================================
 # โควตา
 # =========================================================
+_TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
+_TH_TZ = timezone(timedelta(hours=7))
+WINDOW_TITLES = {
+    "FIVE_HOUR": "ปริมาณการใช้ AI ปัจจุบัน",
+    "WEEKLY": "ขีดจำกัดรายสัปดาห์",
+}
+ACTION_NAMES = {
+    "AUDIO_OVERVIEW": "ภาพรวมแบบเสียง", "VIDEO_OVERVIEW": "ภาพรวมแบบวิดีโอ", "BREAKDOWNS_VIDEO": "วิดีโออธิบาย",
+    "SHORTS_VIDEO": "วิดีโอสั้น", "INFOGRAPHIC": "อินโฟกราฟิก", "SLIDES": "ชุดสไลด์", "REPORTS": "รายงาน",
+    "TABLES": "ตารางข้อมูล", "FLASHCARDS": "แฟลชการ์ด", "QUIZ": "แบบทดสอบ", "MINDMAP": "แผนผังความคิด",
+    "DEEP_RESEARCH": "ค้นคว้าเชิงลึก", "FAST_RESEARCH": "ค้นคว้าอย่างรวดเร็ว", "QNA": "ถาม–ตอบ",
+}
+
+
+def _th_local(dt: datetime) -> datetime:
+    return dt.astimezone(_TH_TZ) if dt.tzinfo else dt.replace(tzinfo=_TH_TZ)
+
+
+def format_reset(resets_at: Any, now: datetime | None = None) -> str | None:
+    """ข้อความเวลารีเซ็ตแบบเดียวกับหน้า NotebookLM (เวลาไทย)
+    วันเดียวกัน -> "รีเซ็ตเวลา 12:28"; วันอื่น -> "รีเซ็ตในวันที่ 6 พ.ย. เวลา 10:28" พร้อมเวลาที่เหลือ"""
+    if not isinstance(resets_at, datetime):
+        return None
+    r = _th_local(resets_at)
+    n = _th_local(now) if now else datetime.now(_TH_TZ)
+    text = (f"รีเซ็ตเวลา {r:%H:%M}" if r.date() == n.date()
+            else f"รีเซ็ตในวันที่ {r.day} {_TH_MONTHS[r.month - 1]} เวลา {r:%H:%M}")
+    left = int((r - n).total_seconds() // 60)
+    if left > 0:
+        d, rest = divmod(left, 1440)
+        h, m = divmod(rest, 60)
+        parts = (f"{d} วัน " if d else "") + (f"{h} ชม. " if h else "") + (f"{m} นาที" if not d else "")
+        text += f" (อีก {parts.strip()})"
+    return text
+
+
+def describe_window(w: dict, now: datetime | None = None) -> dict:
+    """จัดข้อมูลช่วงโควตาให้พร้อมแสดง: title, used (0-100), remaining, reset"""
+    used = w.get("used")
+    used = 0.0 if used is None else float(used)
+    rem = w.get("remaining")
+    rem = max(0.0, 100.0 - used) if rem is None else float(rem)
+    return {
+        "title": WINDOW_TITLES.get(w.get("kind", ""), w.get("kind", "") or "โควตา"),
+        "used": min(max(used, 0.0), 100.0),
+        "remaining": min(max(rem, 0.0), 100.0),
+        "reset": format_reset(w.get("resets_at"), now),
+    }
+
+
 async def get_usage() -> dict | None:
     """โควตาการใช้งานของบัญชี (None ถ้าบัญชีไม่เปิดตัวนับ/ดึงไม่ได้)"""
     try:
@@ -569,4 +619,10 @@ async def get_usage() -> dict | None:
             "remaining": getattr(w, "remaining_percent", None),
             "resets_at": getattr(w, "resets_at", None),
         })
-    return {"windows": windows}
+    blocked = []
+    for a in getattr(u, "actions", []) or []:
+        if getattr(a, "has_sufficient_quota", True) is False:
+            name = getattr(getattr(a, "kind", None), "name", "")
+            blocked.append(ACTION_NAMES.get(name, name))
+    return {"windows": windows, "blocked": blocked, "fetched_at": datetime.now(_TH_TZ)}
+

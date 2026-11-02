@@ -316,18 +316,30 @@ with st.sidebar:
                     st.success(f"เชื่อมต่อได้ ({n} เอกสาร, {time.monotonic() - t0:.1f} วินาที)")
                 except Exception as e:
                     st.error(f"เชื่อมต่อไม่ได้: {type(e).__name__}")
-        with st.expander("📊 โควตาการใช้งาน"):
-            if st.button("ตรวจโควตา", use_container_width=True):
+        with st.expander("📊 โควตาการใช้งาน (เหมือนหน้า NotebookLM)"):
+            if st.button("🔄 ตรวจโควตา", use_container_width=True):
                 try:
-                    usage = ft.run(ft.get_usage())
+                    st.session_state["usage"] = ft.run(ft.get_usage()) or {"windows": []}
                 except Exception:
-                    usage = None
-                if not usage or not usage["windows"]:
-                    st.caption("บัญชีนี้ไม่เปิดตัวนับโควตา หรือดึงข้อมูลไม่ได้")
-                for w in (usage or {}).get("windows", []):
-                    used = w["used"] if w["used"] is not None else 0
-                    st.caption(f"{w['kind']}: ใช้ไป {used:.0f}%")
-                    st.progress(min(max(int(used), 0), 100))
+                    st.session_state["usage"] = {"windows": []}
+            usage = st.session_state.get("usage")
+            if usage is None:
+                st.caption("กด “ตรวจโควตา” เพื่อดูปริมาณการใช้งานล่าสุด")
+            elif not usage["windows"]:
+                st.caption("บัญชีนี้ไม่เปิดตัวนับโควตา หรือดึงข้อมูลไม่ได้")
+            else:
+                for w in usage["windows"]:
+                    d = ft.describe_window(w)
+                    st.markdown(f"**{d['title']}** — ใช้งาน **{d['used']:.0f}%** (เหลือ {d['remaining']:.0f}%)")
+                    st.progress(int(d["used"]))
+                    if d["reset"]:
+                        st.caption(d["reset"])
+                    if d["used"] >= 90:
+                        st.warning("ใกล้หมดโควตา คำถาม/การสร้างสื่ออาจถูกจำกัด")
+                if usage.get("blocked"):
+                    st.error("โควตาไม่พอสำหรับ: " + ", ".join(usage["blocked"]))
+                if usage.get("fetched_at"):
+                    st.caption(f"ข้อมูล ณ {usage['fetched_at']:%H:%M} น.")
     else:
         with st.expander("🔐 ผู้ดูแลระบบ"):
             if not ADMIN_PASSWORD:
