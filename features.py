@@ -145,27 +145,19 @@ def strip_html(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
-def chat_to_markdown(messages: list[dict], title: str = "บทสนทนา ผู้ช่วยงานพัสดุ ทอ.") -> str:
-    """แปลงประวัติแชทเป็น Markdown พร้อมรายการแหล่งอ้างอิงท้ายแต่ละคำตอบ"""
-    lines = [f"# {title}", f"_ส่งออกเมื่อ {datetime.now():%d/%m/%Y %H:%M}_", ""]
-    for m in messages:
-        if m["role"] == "user":
-            lines += [f"## 🙋 คำถาม", m["content"], ""]
-            continue
-        lines += ["## 🤖 คำตอบ", strip_html(m["content"]), ""]
-        refs = m.get("references") or []
-        if refs:
-            lines.append("**แหล่งอ้างอิง**")
-            seen = set()
-            for r in sorted(refs, key=lambda x: int(x.get("number") or 0)):
-                key = (r.get("number"), r.get("source_id"), r.get("cited_text"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                cited = (r.get("cited_text") or "").strip().replace("\n", " ")
-                lines.append(f"- [{r.get('number')}] {r.get('title') or 'แหล่งข้อมูล'}: “{cited[:300]}”")
-            lines.append("")
-    return "\n".join(lines)
+_MD_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__")
+_MD_ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|(?<!_)_(?!_)(.+?)(?<!_)_(?!_)")
+_MD_HEADER = re.compile(r"^#{1,6}\s*", re.MULTILINE)
+_MD_BULLET = re.compile(r"^(\s*)[*\-]\s+", re.MULTILINE)
+
+
+def strip_markdown(text: str) -> str:
+    """ลบเครื่องหมาย Markdown (ตัวหนา/เอียง/หัวข้อ/หัวข้อย่อย) เหลือข้อความล้วนสำหรับ PDF"""
+    text = _MD_BOLD.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _MD_ITALIC.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _MD_HEADER.sub("", text)
+    text = _MD_BULLET.sub(r"\1• ", text)
+    return text
 
 
 # ---------------------------------------------------------
@@ -269,7 +261,7 @@ def chat_to_pdf_bytes(messages: list[dict], title: str = "บทสนทนา 
     pdf.multi_cell(0, 10, title, **_CELL_END)
     pdf.set_font("Thai", "", 10)
     pdf.set_text_color(110, 110, 110)
-    pdf.multi_cell(0, 6, f"ส่งออกเมื่อ {datetime.now():%d/%m/%Y %H:%M}", **_CELL_END)
+    pdf.multi_cell(0, 6, f"ส่งออกเมื่อ {datetime.now(_TH_TZ):%d/%m/%Y %H:%M}", **_CELL_END)
     pdf.set_text_color(0, 0, 0)
     pdf.ln(2)
 
@@ -280,7 +272,7 @@ def chat_to_pdf_bytes(messages: list[dict], title: str = "บทสนทนา 
             pdf.multi_cell(0, 8, "คำถาม", **_CELL_END)
             pdf.set_text_color(0, 0, 0)
             pdf.set_font("Thai", "", 12)
-            pdf.multi_cell(0, 7, m["content"], **_CELL_END)
+            pdf.multi_cell(0, 7, strip_markdown(m["content"]), **_CELL_END)
             pdf.ln(3)
             continue
 
@@ -288,7 +280,7 @@ def chat_to_pdf_bytes(messages: list[dict], title: str = "บทสนทนา 
         pdf.multi_cell(0, 8, "คำตอบ", **_CELL_END)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Thai", "", 12)
-        pdf.multi_cell(0, 7, strip_html(m["content"]), **_CELL_END)
+        pdf.multi_cell(0, 7, strip_markdown(strip_html(m["content"])), **_CELL_END)
 
         refs = m.get("references") or []
         if refs:
@@ -374,7 +366,7 @@ def latest_update(sources: list[SourceInfo]) -> str | None:
 def format_feedback(question: str, answer: str, rating: str, comment: str = "") -> tuple[str, str]:
     """(หัวข้อ, เนื้อหา) ของโน้ตข้อสังเกตจากผู้ใช้"""
     mark = "👎 ไม่ตรง/ไม่ช่วย" if rating == "down" else "👍 ตรง/ช่วยได้"
-    title = f"ข้อสังเกต {mark} {datetime.now():%d/%m/%Y %H:%M}"
+    title = f"ข้อสังเกต {mark} {datetime.now(_TH_TZ):%d/%m/%Y %H:%M}"
     body = f"คำถาม: {question.strip()}\n\nคำตอบของระบบ:\n{strip_html(answer).strip()}"
     if comment.strip():
         body += f"\n\nความเห็นผู้ใช้: {comment.strip()}"

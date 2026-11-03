@@ -12,11 +12,9 @@ html = render_answer("วงเงินคือ 100,000 บาท [1]", refs)
 plain = ft.strip_html(html)
 assert "[1]" in plain and "<" not in plain and "ข้อ 5" not in plain, plain
 
-md = ft.chat_to_markdown([
-    {"role": "user", "content": "วงเงินเท่าไร"},
-    {"role": "assistant", "content": html, "references": refs},
-])
-assert "ระเบียบ.pdf" in md and "ข้อ 5 วงเงิน" in md and "<span" not in md
+assert ft.strip_markdown("**บทที่ ๒** คือเรื่อง _การจำแนก_") == "บทที่ ๒ คือเรื่อง การจำแนก"
+assert ft.strip_markdown("## หัวข้อ\n- ข้อหนึ่ง\n* ข้อสอง") == "หัวข้อ\n• ข้อหนึ่ง\n• ข้อสอง"
+assert ft.strip_markdown("ตัวแปร snake_case ไม่ใช่ตัวเอียง") == "ตัวแปร snake_case ไม่ใช่ตัวเอียง"
 
 tree = {"name": "พัสดุ", "children": [{"name": "จัดซื้อ", "children": [{"name": "เฉพาะเจาะจง"}]}, {"name": "คลัง"}]}
 assert ft.tree_to_markdown(tree) == "- พัสดุ\n  - จัดซื้อ\n    - เฉพาะเจาะจง\n  - คลัง", repr(ft.tree_to_markdown(tree))
