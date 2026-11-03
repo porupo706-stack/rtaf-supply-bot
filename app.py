@@ -395,20 +395,12 @@ def page_chat():
 
     # ปุ่มจัดการบทสนทนา
     if st.session_state.messages:
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
             if st.button("🧹 เริ่มบทสนทนาใหม่", use_container_width=True):
                 st.session_state.messages = []
                 st.rerun()
         with c2:
-            st.download_button(
-                "⬇️ ส่งออก (.md)",
-                data=ft.chat_to_markdown(st.session_state.messages).encode("utf-8"),
-                file_name="rtaf-supply-chat.md",
-                mime="text/markdown",
-                use_container_width=True,
-            )
-        with c3:
             try:
                 pdf_bytes = ft.chat_to_pdf_bytes(st.session_state.messages)
             except Exception:
