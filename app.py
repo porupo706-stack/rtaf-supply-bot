@@ -125,14 +125,21 @@ def clear_gist_cache():
     fetch_from_gist.clear()
 
 
-def handle_error(e: Exception, where: str = "NotebookLM"):
+def _hide_vendor_name(text: str) -> str:
+    """ซ่อนชื่อผู้ให้บริการเบื้องหลัง ไม่ให้หลุดไปโผล่ในข้อความที่ผู้ใช้เห็น"""
+    for vendor in ("NotebookLM", "notebooklm"):
+        text = text.replace(vendor, "ระบบฐานความรู้")
+    return text
+
+
+def handle_error(e: Exception, where: str = "ระบบฐานความรู้"):
     """session หมดอายุ -> หน้าแก้ไข / ข้อผิดพลาดอื่น -> แสดงข้อความ"""
     if is_auth_error(e):
         clear_gist_cache()
         st.session_state["auth_expired"] = True
         st.rerun()
-    st.error(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ {where}")
-    st.caption(f"รายละเอียด: {str(e)}")
+    st.error(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ{where}")
+    st.caption(f"รายละเอียด: {_hide_vendor_name(str(e))}")
 
 
 # =========================================================
@@ -275,7 +282,7 @@ if st.session_state.get("auth_expired", False):
 # ตรวจ auth
 # =========================================================
 if not setup_auth():
-    st.error("⚠️ ยังไม่ได้ตั้งค่า NotebookLM Authentication")
+    st.error("⚠️ ยังไม่ได้ตั้งค่าการยืนยันตัวตนของระบบฐานความรู้")
     st.info("กรุณาตั้งค่า NOTEBOOKLM_MASTER_TOKEN_JSON (แนะนำ) หรือ GIST_ID + GITHUB_TOKEN + SESSION_ENC_KEY ใน Secrets")
     if st.button("🔄 ลองใหม่", use_container_width=True):
         clear_gist_cache()
