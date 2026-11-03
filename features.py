@@ -281,24 +281,8 @@ def chat_to_pdf_bytes(messages: list[dict], title: str = "บทสนทนา 
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Thai", "", 12)
         pdf.multi_cell(0, 7, strip_markdown(strip_html(m["content"])), **_CELL_END)
-
-        refs = m.get("references") or []
-        if refs:
-            pdf.ln(1)
-            pdf.set_font("Thai", "B", 10)
-            pdf.multi_cell(0, 6, "แหล่งอ้างอิง", **_CELL_END)
-            pdf.set_font("Thai", "", 10)
-            pdf.set_text_color(90, 90, 90)
-            seen = set()
-            for r in sorted(refs, key=lambda x: int(x.get("number") or 0)):
-                key = (r.get("number"), r.get("source_id"), r.get("cited_text"))
-                if key in seen:
-                    continue
-                seen.add(key)
-                cited = (r.get("cited_text") or "").strip().replace("\n", " ")
-                line = f"[{r.get('number')}] {r.get('title') or 'แหล่งข้อมูล'}: “{cited[:300]}”"
-                pdf.multi_cell(0, 5.5, line, **_CELL_END)
-            pdf.set_text_color(0, 0, 0)
+        # รายการแหล่งอ้างอิงแบบยาว (ชื่อไฟล์ + ข้อความที่อ้างอิง) ไม่ใส่ใน PDF เพราะทำให้ยาวเกินไป
+        # เลข [n] ในเนื้อคำตอบยังอยู่ และดูรายละเอียดแหล่งอ้างอิงได้ในหน้าเว็บ
         pdf.ln(3)
 
     return bytes(pdf.output())
