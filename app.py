@@ -153,47 +153,43 @@ if not NOTEBOOK_ID:
 # =========================================================
 # NOTEBOOKLM
 # =========================================================
-async def get_answer(prompt: str, history: list[tuple[str, str]] | None = None,
-                      titles: dict[str, str] | None = None) -> dict:
+async def get_answer(prompt: str, history: list[tuple[str, str]] | None = None) -> dict:
     """คืน {"answer", "next_steps", "references": [ {number, source_id, title, cited_text, context} ]}
 
     ถามแบบแยกผู้ใช้ (ดู features.ask_isolated): บริบทต่อเนื่องมาจาก history ของผู้ใช้คนนี้เท่านั้น
-
-    titles: {source_id: ชื่อไฟล์} เอามาจาก cached_sources() ที่เรียกไว้ก่อนแล้ว (เร็วกว่าการยิง
-    client.sources.list() ซ้ำทุกคำถาม และเลี่ยงปัญหาเรียก asyncio.run() ซ้อนกันตอนแคชหมดอายุ)
     """
-    titles = titles or {}
     async with NotebookLMClient.from_storage() as client:
         result = await ft.ask_isolated(client, NOTEBOOK_ID, ft.build_prompt(prompt, history))
         raw_refs = list(getattr(result, "references", None) or [])
 
-        # หาย่อหน้ารอบข้อความที่ถูกอ้างอิงจากเนื้อหาเต็มของไฟล์ — ดึงพร้อมกันทีเดียวทุกไฟล์
-        # ที่ถูกอ้างถึง (แทนที่จะดึงทีละไฟล์เรียงกัน) ช่วยลดเวลารอเมื่อคำตอบอ้างหลายไฟล์
-        sids = {getattr(r, "source_id", "") for r in raw_refs
-                if SHOW_CONTEXT and getattr(r, "source_id", "") and getattr(r, "cited_text", "")}
-
-        async def _fetch_fulltext(sid: str):
+        # ชื่อไฟล์ของแต่ละแหล่งข้อมูล
+        titles: dict[str, str] = {}
+        if raw_refs:
             try:
-                return sid, await client.sources.get_fulltext(NOTEBOOK_ID, sid)
+                for s in await client.sources.list(NOTEBOOK_ID):
+                    titles[s.id] = getattr(s, "title", None) or s.id
             except Exception:
-                return sid, None
-
-        fulltexts: dict = {}
-        if sids:
-            for sid, full in await asyncio.gather(*(_fetch_fulltext(sid) for sid in sids)):
-                fulltexts[sid] = full
+                pass
 
         refs: list[dict] = []
+        fulltexts: dict = {}
         for r in raw_refs:
             sid = getattr(r, "source_id", "") or ""
             cited = getattr(r, "cited_text", "") or ""
             context = ""
 
-            full = fulltexts.get(sid)
-            if full is not None and cited:
-                matches = full.find_citation_context(cited)
-                if matches:
-                    context = matches[0][0]
+            # หาย่อหน้ารอบข้อความที่ถูกอ้างอิงจากเนื้อหาเต็มของไฟล์
+            if SHOW_CONTEXT and sid and cited:
+                try:
+                    if sid not in fulltexts:
+                        fulltexts[sid] = await client.sources.get_fulltext(NOTEBOOK_ID, sid)
+                    full = fulltexts[sid]
+                    if full is not None:
+                        matches = full.find_citation_context(cited)
+                        if matches:
+                            context = matches[0][0]
+                except Exception:
+                    fulltexts[sid] = None
 
             refs.append({
                 "number": getattr(r, "citation_number", None) or 0,
@@ -475,9 +471,7 @@ def page_chat():
     with st.chat_message("assistant"):
         with st.spinner("🔎 กำลังค้นหาข้อมูลจากฐานความรู้..."):
             try:
-                # ดึงรายชื่อ+แคชไว้ก่อน (sync) ป้องกันเรียก asyncio.run ซ้อนกันตอนแคชหมดอายุ
-                titles = {s.id: s.title for s in cached_sources(NOTEBOOK_ID)} if NOTEBOOK_ID else {}
-                data = asyncio.run(get_answer(user_input, history, titles))
+                data = asyncio.run(get_answer(user_input, history))
                 msg = {
                     "role": "assistant",
                     "content": render_answer(data["answer"], data["references"]),
