@@ -212,15 +212,33 @@ async def get_answer(prompt: str, history: list[tuple[str, str]] | None = None) 
 # แสดงข้อความแชท (ใช้ทั้งตอนตอบใหม่และตอนแสดงประวัติ)
 # =========================================================
 @st.cache_data(ttl=600, show_spinner=False)
-def cached_sources(notebook_id: str) -> list:
-    """รายชื่อเอกสาร (cache 10 นาที) ใช้กับตัวเลือกขอบเขตและวันที่อัปเดต; ดึงไม่ได้ = รายการว่าง"""
+def _cached_sources_raw(notebook_id: str) -> list[dict]:
+    """ดึงรายชื่อเอกสารจริง (cache 10 นาที) เก็บเป็น dict ธรรมดา ไม่ใช่ dataclass
+    เพราะ st.cache_data ใช้ pickle เก็บผลลัพธ์ ถ้าแอป hot-reload โค้ดกลางอากาศ
+    (เช่นหลัง push ใหม่) คลาส dataclass เดิมกับคลาสหลัง reload จะถือเป็นคนละคลาส
+    ทำให้ pickle ล้มเหลวและหน้าเว็บพังทั้งหน้า เก็บเป็น dict จึงไม่มีปัญหานี้"""
     try:
-        return ft.run(ft.list_sources(notebook_id))
+        return [s.__dict__ for s in ft.run(ft.list_sources(notebook_id))]
     except Exception:
         return []
 
 
+def cached_sources(notebook_id: str) -> list:
+    """รายชื่อเอกสารแบบ SourceInfo (ใช้กับตัวเลือกขอบเขตและวันที่อัปเดต); ดึงไม่ได้ = รายการว่าง"""
+    return [ft.SourceInfo(**d) for d in _cached_sources_raw(notebook_id)]
+
+
 DISCLAIMER = "ข้อมูลจากเอกสารที่อัปโหลดไว้ในระบบ โปรดตรวจสอบกับระเบียบฉบับจริงก่อนดำเนินการ"
+
+
+@st.cache_data(show_spinner=False, max_entries=20)
+def _cached_chat_pdf(messages: list) -> bytes | None:
+    """สร้าง PDF จากบทสนทนา (cache ตามเนื้อหาบทสนทนา) กันไม่ให้ต้องสร้าง PDF ใหม่
+    ทุกครั้งที่หน้าเว็บ rerun (เช่น ถามคำถามใหม่ กดถูกใจ/ไม่ถูกใจ) ทั้งที่บทสนทนาไม่ได้เปลี่ยน"""
+    try:
+        return ft.chat_to_pdf_bytes(messages)
+    except Exception:
+        return None
 
 
 def render_message(message: dict):
@@ -408,10 +426,7 @@ def page_chat():
                 st.session_state.messages = []
                 st.rerun()
         with c2:
-            try:
-                pdf_bytes = ft.chat_to_pdf_bytes(st.session_state.messages)
-            except Exception:
-                pdf_bytes = None
+            pdf_bytes = _cached_chat_pdf(st.session_state.messages)
             st.download_button(
                 "📄 ดาวน์โหลด PDF",
                 data=pdf_bytes or b"",
