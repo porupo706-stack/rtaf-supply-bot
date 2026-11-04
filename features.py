@@ -13,6 +13,7 @@ import json
 import re
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -166,8 +167,84 @@ def strip_markdown(text: str) -> str:
 # ผู้ใช้ทุกคนใช้สมุดบันทึกเดียวกัน และ NotebookLM ต่อทุกคำถามเข้ากับ "บทสนทนาล่าสุด" ร่วมกัน
 # เพื่อไม่ให้คำถามของคนหนึ่งไปปนกับอีกคน: (1) ถามทีละคำถาม (ล็อก) (2) ลบบทสนทนาทันทีหลังได้คำตอบ
 # (3) บริบทต่อเนื่องของแต่ละคนแนบไปกับคำถามจากฝั่งแอปแทน
-_ASK_LOCK = threading.Lock()
+#
+# การลบบทสนทนา (ข้อ 2) เป็น API เรียกเพิ่มอีก 1 รอบที่ "ผู้ถามคนปัจจุบัน" ไม่จำเป็นต้องรอ —
+# แค่ต้องลบเสร็จ "ก่อนคำถามถัดไปจะเริ่มถาม" เท่านั้น จึงย้ายไปทำบน thread/event loop เบื้องหลัง
+# แยกต่างหาก (ไม่ใช่ loop เดียวกับที่ถาม ซึ่งจะถูกปิดทันทีที่ตอบเสร็จ) แล้วค่อยปลดคิวตอนลบเสร็จจริง
+# คนถามคนปัจจุบันได้คำตอบเร็วขึ้น (ไม่ต้องรอรอบลบ) แต่คนถัดไปยังคงต้องรอจนกว่าจะลบเสร็จเหมือนเดิม
+# กันไม่ให้คำถามปนกันข้ามคน — ถ้าลบค้างนานผิดปกติ (งานเบื้องหลังพัง) จะปลดคิวเองไม่ให้แอปค้างถาวร
+_MAX_TURN_HOLD_SECONDS = 90.0
+
+_turn_cv = threading.Condition()
+_turn_busy = False
+_turn_busy_since: float | None = None
 _fresh = False   # True = รู้ว่าสมุดบันทึกไม่มีบทสนทนาค้าง
+
+_cleanup_thread: threading.Thread | None = None
+_cleanup_loop: asyncio.AbstractEventLoop | None = None
+_cleanup_lock = threading.Lock()   # กันสร้าง background thread ซ้ำตอนมีหลายคำถามแข่งกันเข้ามาพร้อมกัน
+
+
+def _acquire_turn() -> None:
+    """รอจนกว่าจะถึงคิวถาม บล็อกจนกว่าคำถามก่อนหน้า (รวมขั้นตอนลบบทสนทนาเบื้องหลัง) จะเสร็จ"""
+    global _turn_busy, _turn_busy_since
+    with _turn_cv:
+        while _turn_busy:
+            since = _turn_busy_since
+            if since is not None and (time.monotonic() - since) > _MAX_TURN_HOLD_SECONDS:
+                break   # คิวก่อนหน้าค้างนานผิดปกติ (งานเบื้องหลังพัง) -> เคลียร์เองกันแอปค้างถาวร
+            # เช็กซ้ำถี่กว่าเดิมถ้า _MAX_TURN_HOLD_SECONDS ถูกตั้งไว้สั้น (ไว้สำหรับทดสอบ);
+            # ของจริง (90 วิ) จะเช็กทุก 1 วิเหมือนเดิม
+            _turn_cv.wait(timeout=min(1.0, max(_MAX_TURN_HOLD_SECONDS / 4, 0.01)))
+        _turn_busy = True
+        _turn_busy_since = time.monotonic()
+
+
+def _release_turn() -> None:
+    global _turn_busy, _turn_busy_since
+    with _turn_cv:
+        _turn_busy = False
+        _turn_busy_since = None
+        _turn_cv.notify_all()
+
+
+def _ensure_cleanup_worker() -> asyncio.AbstractEventLoop:
+    """thread + event loop เบื้องหลังสำหรับลบบทสนทนา (อยู่แยกจาก loop ที่ใช้ถาม-ตอบ)"""
+    global _cleanup_thread, _cleanup_loop
+    with _cleanup_lock:
+        if _cleanup_thread is not None and _cleanup_thread.is_alive():
+            assert _cleanup_loop is not None
+            return _cleanup_loop
+        loop = asyncio.new_event_loop()
+
+        def _run() -> None:
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        t = threading.Thread(target=_run, name="notebooklm-cleanup", daemon=True)
+        t.start()
+        _cleanup_thread, _cleanup_loop = t, loop
+        return loop
+
+
+async def _cleanup_and_release(client_factory, notebook_id: str, cid: str | None) -> None:
+    """รันบน background loop: ลบบทสนทนา แล้วค่อยปลดคิวให้คำถามถัดไปเริ่มได้
+
+    client_factory: callable ที่เรียกแล้วได้ async context manager คืน client ของตัวเอง
+    (เปิด session ใหม่ ไม่ใช่ client เดิมที่ใช้ถาม เพราะ client เดิมถูกปิดไปแล้วตอนนี้คืนคำตอบ)
+    """
+    global _fresh
+    try:
+        async with client_factory() as client:
+            if cid:
+                await client.chat.delete_conversation(notebook_id, cid)
+            else:
+                await _drop_current(client, notebook_id)
+        _fresh = True
+    except Exception:
+        _fresh = False   # ลบไม่สำเร็จ: คำถามถัดไปจะลองเคลียร์ก่อนถามเอง (ดู ask_isolated)
+    finally:
+        _release_turn()
 
 
 def history_pairs(messages: list[dict]) -> list[tuple[str, str]]:
@@ -202,11 +279,21 @@ async def _drop_current(client, notebook_id: str) -> None:
         await client.chat.delete_conversation(notebook_id, cid)
 
 
-async def ask_isolated(client, notebook_id: str, prompt: str):
-    """ถามโดยไม่ต่อกับบทสนทนาของคนอื่น แล้วลบบทสนทนาทิ้ง คืนผลลัพธ์ของ chat.ask"""
+def _default_cleanup_client_factory():
+    return NotebookLMClient.from_storage()
+
+
+async def ask_isolated(client, notebook_id: str, prompt: str, cleanup_client_factory=None):
+    """ถามโดยไม่ต่อกับบทสนทนาของคนอื่น คืนผลลัพธ์ของ chat.ask ทันทีที่ได้คำตอบ
+    (ลบบทสนทนาทิ้งทำต่อเบื้องหลัง ไม่ทำให้ผู้ถามคนนี้ต้องรอ — ดูหมายเหตุด้านบน)
+
+    cleanup_client_factory: ใช้ฉีด client ปลอมตอนทดสอบเท่านั้น ของจริงเปิด session ใหม่เสมอ
+    """
     global _fresh
+    cleanup_client_factory = cleanup_client_factory or _default_cleanup_client_factory
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, _ASK_LOCK.acquire)
+    await loop.run_in_executor(None, _acquire_turn)
+    released = False
     try:
         if not _fresh:                       # ครั้งแรก/หลังลบพลาด: เคลียร์บทสนทนาเก่าที่ค้างก่อน
             try:
@@ -219,18 +306,21 @@ async def ask_isolated(client, notebook_id: str, prompt: str):
         except Exception:
             _fresh = False
             raise
+
+        cid = getattr(result, "conversation_id", None)
         try:
-            cid = getattr(result, "conversation_id", None)
-            if cid:
-                await client.chat.delete_conversation(notebook_id, cid)
-            else:
-                await _drop_current(client, notebook_id)
-            _fresh = True
+            cleanup_loop = _ensure_cleanup_worker()
+            asyncio.run_coroutine_threadsafe(
+                _cleanup_and_release(cleanup_client_factory, notebook_id, cid), cleanup_loop
+            )
+            released = True   # งานเบื้องหลังรับหน้าที่ปลดคิวต่อจากนี้
         except Exception:
-            _fresh = False
+            _fresh = False    # ส่งงานเบื้องหลังไม่สำเร็จ (ยังไม่ปลดคิว) -> ปลดคิวเองด้านล่างแทน
+
         return result
     finally:
-        _ASK_LOCK.release()
+        if not released:
+            _release_turn()
 
 
 async def clear_history(notebook_id: str) -> bool:

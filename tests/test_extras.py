@@ -1,4 +1,5 @@
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -70,15 +71,32 @@ class FakeServer:
         self.chat = Chat()
 
 
+class _AsyncCM:
+    """ห่อ FakeServer ให้ใช้กับ `async with ...() as client:` ได้ (จำลอง client_factory ของจริง)"""
+    def __init__(self, obj):
+        self._obj = obj
+    async def __aenter__(self):
+        return self._obj
+    async def __aexit__(self, *exc):
+        return False
+
+
+def _wait_idle():
+    """บล็อกจนกว่างานลบบทสนทนาเบื้องหลัง (ถ้ามี) ของคำถามล่าสุดจะเสร็จ ก่อนตรวจผลในเทสต์"""
+    ft._acquire_turn()
+    ft._release_turn()
+
+
 ft._fresh = False
 srv = FakeServer(leftover=7)                              # มีบทสนทนาเก่าค้างอยู่แล้ว
 def worker(i):
-    asyncio.run(ft.ask_isolated(srv, "nb", f"q{i}"))
+    asyncio.run(ft.ask_isolated(srv, "nb", f"q{i}", cleanup_client_factory=lambda: _AsyncCM(srv)))
 ths = [threading.Thread(target=worker, args=(i,)) for i in range(6)]
 [t.start() for t in ths]; [t.join() for t in ths]
+_wait_idle()                                              # รองานลบเบื้องหลังของคำถามสุดท้ายให้เสร็จก่อน
 assert srv.max_active == 1, "ต้องถามทีละคำถาม"
 assert [n for _, n in srv.seen] == [0] * 6, srv.seen      # ทุกคำถามเริ่มจากบทสนทนาว่าง (ไม่เห็นของคนอื่น/ของเก่า)
-assert srv.cid is None and ft._fresh is True              # ลบทิ้งหลังตอบ
+assert srv.cid is None and ft._fresh is True              # ลบทิ้งหลังตอบ (เบื้องหลัง แต่ต้องเสร็จก่อนคำถามถัดไป)
 
 class FlakyDelete(FakeServer):
     def __init__(self):
@@ -89,11 +107,49 @@ class FlakyDelete(FakeServer):
         self.chat.delete_conversation = bad
 ft._fresh = True
 srv = FlakyDelete()
-r = asyncio.run(ft.ask_isolated(srv, "nb", "x"))           # ลบพลาดก็ยังได้คำตอบ แต่ต้องรู้ว่าสกปรก
-assert r.answer == "ตอบ x" and ft._fresh is False
+cf = lambda: _AsyncCM(srv)
+r = asyncio.run(ft.ask_isolated(srv, "nb", "x", cleanup_client_factory=cf))   # ลบพลาดก็ยังได้คำตอบทันที
+assert r.answer == "ตอบ x"
+_wait_idle()                                              # รองานลบเบื้องหลัง (ที่ตั้งใจให้พลาด) ให้จบก่อน
+assert ft._fresh is False, "ต้องรู้ว่าลบไม่สำเร็จ สกปรกค้างอยู่"
 srv.fail = False
-asyncio.run(ft.ask_isolated(srv, "nb", "y"))               # คำถามถัดไปเคลียร์ของค้างก่อนถาม
+asyncio.run(ft.ask_isolated(srv, "nb", "y", cleanup_client_factory=cf))       # คำถามถัดไปเคลียร์ของค้างก่อนถาม
+_wait_idle()
 assert srv.seen[-1] == ("y", 0) and srv.cid is None and ft._fresh is True
+
+# ---- ask_isolated คืนคำตอบทันที ไม่ต้องรอขั้นตอนลบบทสนทนาเบื้องหลังให้เสร็จก่อน
+class SlowDelete(FakeServer):
+    """delete_conversation ช้ามาก (จำลองเครือข่ายหน่วง) ต้องไม่ทำให้ผู้ถามคนนี้รอ"""
+    def __init__(self, delete_delay=0.3):
+        super().__init__(); self.delete_delay = delete_delay
+        real = self.chat.delete_conversation
+        async def slow(nb, cid):
+            await asyncio.sleep(self.delete_delay)
+            await real(nb, cid)
+        self.chat.delete_conversation = slow
+
+ft._fresh = True
+srv = SlowDelete(delete_delay=0.3)
+t0 = time.monotonic()
+r = asyncio.run(ft.ask_isolated(srv, "nb", "z", cleanup_client_factory=lambda: _AsyncCM(srv)))
+elapsed = time.monotonic() - t0
+assert r.answer == "ตอบ z"
+assert elapsed < 0.15, f"ไม่ควรรอขั้นตอนลบ (0.3s) ก่อนได้คำตอบ ใช้เวลาไป {elapsed:.3f}s"
+assert srv.cid is not None, "ตอนคืนคำตอบ ยังไม่ทันลบ (กำลังลบอยู่เบื้องหลัง)"
+_wait_idle()                                               # รอให้ลบเบื้องหลังเสร็จจริงก่อนไปเทสต์ถัดไป
+assert srv.cid is None and ft._fresh is True
+
+# ---- คิวไม่ค้างถาวรแม้งานลบเบื้องหลังพังค้าง (stale-lock recovery)
+real_max_hold = ft._MAX_TURN_HOLD_SECONDS
+ft._MAX_TURN_HOLD_SECONDS = 0.05
+try:
+    ft._acquire_turn()                     # จำลองคิวค้าง (ไม่มีใครมาปลดให้)
+    t0 = time.monotonic()
+    ft._acquire_turn()                     # ต้องไม่ค้างตลอดไป ต้องกู้คืนเองหลัง timeout สั้น ๆ
+    assert time.monotonic() - t0 < 1.0, "ควรกู้คิวที่ค้างคืนภายในเวลาไม่นาน ไม่ใช่ค้างตลอดไป"
+finally:
+    ft._release_turn()
+    ft._MAX_TURN_HOLD_SECONDS = real_max_hold
 
 # ---- โควตา (แสดงแบบเดียวกับ NotebookLM)
 from datetime import timezone, timedelta
