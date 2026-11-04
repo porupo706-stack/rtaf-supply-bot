@@ -16,6 +16,8 @@ src = [S("1", "ระเบียบพัสดุ 2560.pdf", "PDF", True, 10, 
        S("3", "แบบฟอร์ม.docx", "DOC", True, 10, None)]
 assert ft.latest_update(src) == "01/09/2569"
 assert ft.latest_update([S("x", "t", "k", True, 1, None)]) is None
+# roundtrip ผ่าน dict (แคชใน app.py เก็บเป็น dict กัน pickle พังตอน hot-reload)
+assert ft.SourceInfo(**src[0].__dict__) == src[0]
 
 # ---- ข้อสังเกต
 title, body = ft.format_feedback("ถามอะไร", '<b>ตอบ</b> <span class="cite"><span class="cite-n">1</span></span>', "down", " ไม่ตรง ")
