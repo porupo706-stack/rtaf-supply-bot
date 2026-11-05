@@ -361,8 +361,6 @@ with st.sidebar:
                         st.caption(d["reset"])
                     if d["used"] >= 90:
                         st.warning("ใกล้หมดโควตา คำถาม/การสร้างสื่ออาจถูกจำกัด")
-                if usage.get("blocked"):
-                    st.error("โควตาไม่พอสำหรับ: " + ", ".join(usage["blocked"]))
                 if usage.get("fetched_at"):
                     st.caption(f"ข้อมูล ณ {usage['fetched_at']:%H:%M} น.")
     else:
