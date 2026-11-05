@@ -328,7 +328,7 @@ with st.sidebar:
             mode = st.session_state.get("auth_mode")
             st.caption("กุญแจเข้าระบบ: " + ("master token ✅ (ต่ออายุเอง)" if mode == "master-token"
                                             else "session สำรอง ⚠️ (อาจหมดอายุ)"))
-            if st.button("🧹 ล้างประวัติแชตใน Notebook ตอนนี้", use_container_width=True):
+            if st.button("🧹 ล้างประวัติแชตในตอนนี้", use_container_width=True):
                 try:
                     done = ft.run(ft.clear_history(NOTEBOOK_ID))
                     st.success("ล้างประวัติแล้ว" if done else "ยังไม่มีประวัติให้ล้าง")
