@@ -111,9 +111,17 @@ def _chip(number: int, passages: list[dict]) -> str:
             f'<span class="cite-tip">{"".join(inner)}</span></span>')
 
 
+def _escape_html_only(text: str) -> str:
+    """escape เฉพาะอักขระที่ทำให้เกิด HTML/Script หลุดออกมาได้ (< > &) ไม่แตะ markdown syntax
+    (ตัดกับหน้าเว็บที่เรนเดอร์คำตอบด้วย unsafe_allow_html=True — คำตอบมาจาก AI ซึ่งมีโอกาส
+    คัดลอกข้อความจากเอกสารที่อัปโหลดมาเป๊ะ ๆ รวมถึงอักขระ HTML ด้วย จึงต้อง escape ก่อนเสมอ)"""
+    return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def render_answer(answer: str, refs: list[dict]) -> str:
     """แทนที่ [n] ในคำตอบด้วยชิปที่เปิดดูแหล่งข้อมูลได้"""
     grouped = group_references(refs)
+    answer = _escape_html_only(answer)   # กัน HTML Injection ก่อนแทนที่เลขอ้างอิงด้วยชิป (ไม่กระทบ [n])
 
     def repl(m: re.Match) -> str:
         nums = expand_numbers(m.group(1))
