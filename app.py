@@ -314,7 +314,7 @@ if not setup_auth():
 st.session_state.setdefault("is_admin", False)
 st.session_state.setdefault("login_attempts", 0)
 
-PAGES = ["💬 ถาม–ตอบ", "📚 แหล่งข้อมูล", "🎨 สื่อสรุป"]
+PAGES = ["💬 ถาม–ตอบ", "📚 แหล่งข้อมูล"]
 page = st.sidebar.radio("เมนู", PAGES, label_visibility="collapsed")
 
 with st.sidebar:
@@ -587,102 +587,9 @@ def page_sources():
 
 
 # =========================================================
-# หน้า 3: สื่อสรุป (Studio)
-# =========================================================
-def studio_form() -> tuple[str, dict] | None:
-    """ฟอร์มสร้างสื่อ (ผู้ดูแลเท่านั้น) คืน (ชนิด, ตัวเลือก) เมื่อกดสร้าง"""
-    stype = st.selectbox("ชนิดสื่อ", list(ft.STUDIO_TYPES), format_func=ft.STUDIO_TYPES.get)
-    opts: dict = {"language": "th"}
-
-    if stype == "audio":
-        opts["audio_format"] = ft.AUDIO_FORMATS[st.selectbox("รูปแบบ", list(ft.AUDIO_FORMATS))]
-        opts["audio_length"] = ft.AUDIO_LENGTHS[st.selectbox("ความยาว", list(ft.AUDIO_LENGTHS), index=1)]
-    elif stype == "report":
-        opts["report_format"] = ft.REPORT_FORMATS[st.selectbox("รูปแบบรายงาน", list(ft.REPORT_FORMATS))]
-    elif stype == "slides":
-        opts["slide_format"] = ft.SLIDE_FORMATS[st.selectbox("รูปแบบสไลด์", list(ft.SLIDE_FORMATS))]
-        opts["slide_length"] = ft.SLIDE_LENGTHS[st.selectbox("ความยาว", list(ft.SLIDE_LENGTHS))]
-    elif stype in ("quiz", "flashcards"):
-        opts["quantity"] = ft.QUIZ_QUANTITY[st.selectbox("จำนวน", list(ft.QUIZ_QUANTITY), index=1)]
-        opts["difficulty"] = ft.QUIZ_DIFFICULTY[st.selectbox("ความยาก", list(ft.QUIZ_DIFFICULTY), index=1)]
-    elif stype == "infographic":
-        opts["orientation"] = ft.INFO_ORIENTATION[st.selectbox("แนวภาพ", list(ft.INFO_ORIENTATION))]
-        opts["detail"] = ft.INFO_DETAIL[st.selectbox("ระดับรายละเอียด", list(ft.INFO_DETAIL), index=1)]
-
-    opts["instructions"] = st.text_area(
-        "คำสั่งเพิ่มเติม (ไม่บังคับ)", placeholder="เช่น เน้นขั้นตอนการจัดซื้อโดยวิธีเฉพาะเจาะจง", height=80)
-
-    if st.button("✨ สร้าง", type="primary"):
-        return stype, opts
-    return None
-
-
-def page_studio():
-    st.markdown("#### 🎨 สื่อสรุปจากแหล่งข้อมูล")
-
-    if IS_ADMIN:
-        with st.expander("➕ สร้างสื่อใหม่"):
-            req_ = studio_form()
-            if req_:
-                with st.spinner("กำลังสร้าง อาจใช้เวลาหลายนาที (พอดแคสต์/วิดีโออาจนานกว่า)..."):
-                    try:
-                        res = ft.run(ft.generate(NOTEBOOK_ID, *req_))
-                        if res["ok"]:
-                            st.success("สร้างเสร็จแล้ว ดาวน์โหลดได้ที่รายการด้านล่าง")
-                            st.session_state.pop("artifacts", None)
-                        else:
-                            st.error(f"สร้างไม่สำเร็จ: {res['error']}")
-                    except Exception as e:
-                        handle_error(e)
-    else:
-        st.caption("ผู้ใช้ทั่วไปดาวน์โหลดสื่อที่ผู้ดูแลสร้างไว้แล้วได้ — การสร้างสื่อใหม่สำหรับผู้ดูแลระบบ")
-
-    if st.button("🔄 โหลดรายการใหม่", key="reload_art") or "artifacts" not in st.session_state:
-        with st.spinner("กำลังโหลดรายการ..."):
-            try:
-                st.session_state["artifacts"] = ft.run(ft.list_artifacts(NOTEBOOK_ID))
-            except Exception as e:
-                handle_error(e)
-                return
-
-    arts = [a for a in st.session_state.get("artifacts", []) if a.completed]
-    if not arts:
-        st.info("ยังไม่มีสื่อที่สร้างเสร็จ")
-        return
-
-    st.session_state.setdefault("prepared", {})
-    for a in arts:
-        with st.expander(f"{a.label} · {a.title}"):
-            fmts = ft.download_options(a.kind)
-            fmt = st.radio("รูปแบบไฟล์", fmts, horizontal=True, key=f"fmt_{a.id}") if len(fmts) > 1 else fmts[0]
-            key = f"{a.id}:{fmt}"
-            if st.button("เตรียมไฟล์", key=f"prep_{key}", use_container_width=True):
-                with st.spinner("กำลังเตรียมไฟล์..."):
-                    try:
-                        st.session_state["prepared"][key] = ft.run(ft.download_artifact(NOTEBOOK_ID, a, fmt))
-                    except Exception as e:
-                        handle_error(e)
-            if key in st.session_state["prepared"]:
-                data, fname, mime = st.session_state["prepared"][key]
-                st.download_button(f"⬇️ ดาวน์โหลด {fname}", data=data, file_name=fname,
-                                   mime=mime, key=f"dl_{key}", use_container_width=True)
-                # แสดงตัวอย่างของบางชนิด
-                if a.kind == "INFOGRAPHIC":
-                    st.image(data)
-                elif a.kind == "AUDIO":
-                    st.audio(data, format=mime)
-                elif a.kind == "MIND_MAP":
-                    tree = ft.mind_map_tree(data)
-                    if tree:
-                        st.markdown(ft.tree_to_markdown(tree))
-
-
-# =========================================================
 # ROUTER
 # =========================================================
 if page == PAGES[0]:
     page_chat()
-elif page == PAGES[1]:
-    page_sources()
 else:
-    page_studio()
+    page_sources()
