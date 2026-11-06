@@ -12,6 +12,12 @@ html = render_answer("วงเงินคือ 100,000 บาท [1]", refs)
 plain = ft.strip_html(html)
 assert "[1]" in plain and "<" not in plain and "ข้อ 5" not in plain, plain
 
+# กัน HTML Injection: คำตอบ AI ไม่ควรมีแท็ก HTML ดิบหลุดออกมาได้ (หน้าเว็บเรนเดอร์ด้วย unsafe_allow_html=True)
+xss = render_answer('แจ้งเตือน <script>alert(1)</script> ตามข้อ [1] & ข้อ 2', refs)
+assert "<script>" not in xss and "&lt;script&gt;alert(1)&lt;/script&gt;" in xss, xss
+assert "ข้อ 2" in xss and "&amp;" in xss      # ตัวอักษรธรรมดา/& ยังอยู่ครบ ไม่หาย
+assert 'class="cite-n"' in xss                # เลขอ้างอิง [1] ยังถูกแทนที่เป็นชิปได้ปกติ
+
 assert ft.strip_markdown("**บทที่ ๒** คือเรื่อง _การจำแนก_") == "บทที่ ๒ คือเรื่อง การจำแนก"
 assert ft.strip_markdown("## หัวข้อ\n- ข้อหนึ่ง\n* ข้อสอง") == "หัวข้อ\n• ข้อหนึ่ง\n• ข้อสอง"
 assert ft.strip_markdown("ตัวแปร snake_case ไม่ใช่ตัวเอียง") == "ตัวแปร snake_case ไม่ใช่ตัวเอียง"
