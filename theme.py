@@ -128,6 +128,7 @@ HERO_HTML = """
   </div>
   <div class="hero-tags">
     <span>📘 ระเบียบ/ข้อบังคับ</span><span>🔎 ค้นหาเร็ว</span><span>📌 อ้างอิงต้นฉบับ</span>
+     <span>ออกแบบโดย พ.อ.อ.กนก คงสีทอง</span>
   </div>
 </div>
 """
