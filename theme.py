@@ -35,6 +35,12 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   background: repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0 10px, transparent 10px 22px);
   transform: skewX(-12deg); pointer-events: none;
 }}
+.hero-jets {{  /* ฝูงบินเครื่องบินไอพ่น มุมขวาล่าง ให้ธีมตรงกับเว็บ LMIS */
+  position: absolute; right: -10px; top: -8px; width: 230px; height: 150px;
+  z-index: 0; pointer-events: none;
+  -webkit-mask-image: linear-gradient(115deg, transparent 0%, transparent 18%, #000 55%);
+          mask-image: linear-gradient(115deg, transparent 0%, transparent 18%, #000 55%);
+}}
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
 .hero .hero-icon {{
   width: 3.6rem; height: 3.6rem; flex: 0 0 auto; display:flex; align-items:center; justify-content:center;
@@ -117,8 +123,33 @@ def _logo_html() -> str:
         return '<div class="hero-icon">✈️</div>'
 
 
+_JETS_SVG = """
+<div class="hero-jets" aria-hidden="true">
+  <svg viewBox="0 0 240 150" xmlns="http://www.w3.org/2000/svg">
+    <g fill="#ffffff">
+      <g transform="translate(150,95) rotate(-24) scale(1.35)" opacity="0.95">
+        <path d="M95,20 L58,8 L22,-8 L42,20 L22,48 L58,32 Z"/>
+        <path d="M20,13 L-6,2 L-16,7 L0,20 L-16,33 L-6,38 L20,27 Z"/>
+        <path d="M6,13 L12,-6 L18,13 Z"/>
+      </g>
+      <g transform="translate(95,120) rotate(-24) scale(1.0)" opacity="0.6">
+        <path d="M95,20 L58,8 L22,-8 L42,20 L22,48 L58,32 Z"/>
+        <path d="M20,13 L-6,2 L-16,7 L0,20 L-16,33 L-6,38 L20,27 Z"/>
+        <path d="M6,13 L12,-6 L18,13 Z"/>
+      </g>
+      <g transform="translate(48,142) rotate(-24) scale(0.72)" opacity="0.35">
+        <path d="M95,20 L58,8 L22,-8 L42,20 L22,48 L58,32 Z"/>
+        <path d="M20,13 L-6,2 L-16,7 L0,20 L-16,33 L-6,38 L20,27 Z"/>
+        <path d="M6,13 L12,-6 L18,13 Z"/>
+      </g>
+    </g>
+  </svg>
+</div>
+"""
+
 HERO_HTML = """
 <div class="hero">
+  __JETS__
   <div class="hero-top">
     __LOGO__
     <div>
@@ -131,4 +162,4 @@ HERO_HTML = """
   </div>
 </div>
 """
-HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html())
+HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html()).replace("__JETS__", _JETS_SVG)
