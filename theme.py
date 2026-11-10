@@ -27,30 +27,35 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .hero {{
   position: relative; overflow: hidden; margin: .2rem 0 1.2rem 0;
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
-  background: linear-gradient(100deg, {SLATE} 0%, {SLATE} 60%, {SLATE_LT} 100%);
+  background-color: {SLATE}; /* สีพื้นหลังสำรองกรณีโหลดภาพไม่ขึ้น */
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
   border-bottom: 4px solid {GOLD};
-}}
-.hero-scrim {{  /* ไล่สีเข้มทับภาพถ่ายฝั่งซ้าย ให้ตัวหนังสืออ่านออกชัด บังตัวหนังสือ/โลโก้เดิมในภาพให้หมด */
-  position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background: linear-gradient(100deg,
-    rgba(7,19,38,.98) 0%, rgba(7,19,38,.98) 56%,
-    rgba(7,19,38,.78) 68%, rgba(7,19,38,.18) 86%, rgba(7,19,38,0) 100%);
 }}
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
 .hero .hero-icon {{
   width: 3.6rem; height: 3.6rem; flex: 0 0 auto; display:flex; align-items:center; justify-content:center;
   font-size: 1.7rem; border-radius: 50%; background: rgba(255,255,255,.14);
   border: 2px solid {GOLD};
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 }}
 .hero .hero-icon.has-logo {{ border-radius: .85rem; overflow: hidden; padding: 0; background: none; }}
 .hero .hero-icon img {{ width: 100%; height: 100%; display:block; object-fit: cover; }}
-.hero h1 {{ margin:0; padding:0; font-size: 1.45rem; line-height:1.35; font-weight:800; color:#fff; letter-spacing:.2px; }}
-.hero .hero-sub {{ margin:.25rem 0 0 0; font-size:.95rem; color:#D5E2F7; }}
+
+/* เพิ่ม text-shadow เพื่อให้อ่านตัวหนังสือสีขาวบนพื้นฟ้าสว่างได้ชัดเจน */
+.hero h1 {{ 
+  margin:0; padding:0; font-size: 1.45rem; line-height:1.35; 
+  font-weight:800; color:#fff; letter-spacing:.2px; 
+  text-shadow: 1px 2px 5px rgba(0,0,0,0.65); 
+}}
+.hero .hero-sub {{ 
+  margin:.25rem 0 0 0; font-size:.95rem; color:#fff; 
+  text-shadow: 1px 2px 4px rgba(0,0,0,0.65); 
+}}
 .hero .hero-tags {{ margin-top:.9rem; display:flex; flex-wrap:wrap; gap:.4rem; position:relative; z-index:1; }}
 .hero .hero-tags span {{
   font-size:.78rem; padding:.18rem .65rem; border-radius:1rem;
-  background: rgba(255,255,255,.12); border:1px solid rgba(201,162,39,.65); color:#FFF4CC;
+  background: rgba(10,42,94,.4); border:1px solid rgba(201,162,39,.65); color:#FFF4CC;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
 }}
 
 /* ---------- ช่องพิมพ์คำถาม ---------- */
@@ -124,14 +129,15 @@ def _photo_style() -> str:
     try:
         b64 = base64.b64encode(PHOTO_PATH.read_bytes()).decode()
         return (f"background-image:url(data:image/jpeg;base64,{b64});"
-                "background-size:cover;background-position:60% center;")
+                "background-size:cover;"
+                "background-position:center;"
+                "background-repeat:no-repeat;")
     except OSError:
         return ""
 
 
 HERO_HTML = """
 <div class="hero" style="__PHOTO__">
-  <div class="hero-scrim" aria-hidden="true"></div>
   <div class="hero-top">
     __LOGO__
     <div>
