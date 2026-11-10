@@ -31,13 +31,12 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
 }}
 
-/* ใช้ transform เพื่อซูมภาพพื้นหลัง (ชดเชยขอบขาวที่ติดมากับรูป) แล้วปรับตำแหน่งเครื่องบินให้ขยับลงและเข้าในกรอบ */
+/* เลเยอร์พื้นหลังแยก: ดันขอบขาวที่มากับรูปต้นฉบับออกไปนอกกรอบ */
 .hero-bg {{
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  /* ค่าเหล่านี้ตั้งมาเพื่อดันขอบขาวของรูปต้นฉบับออกไป ให้เหลือแต่ส่วนรูปจริงๆ */
+  top: -45px; bottom: -35px; left: -25px; right: -25px;
   z-index: 0;
-  /* ซูมภาพ 120% (เพื่อดันขอบขาวออก) และเลื่อนภาพลง + ไปทางซ้ายนิดหน่อย เพื่อดึงเครื่องบินกลับมาให้เห็นทั้งลำ */
-  transform: scale(1.2) translate(-3%, 8%); 
 }}
 
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
@@ -137,8 +136,9 @@ def _photo_style() -> str:
     """ภาพถ่ายเครื่องบินจริงเป็นพื้นหลัง header (assets/hero-photo.jpg) ถ้าไม่มีไฟล์ใช้พื้นสีเรียบแทน"""
     try:
         b64 = base64.b64encode(PHOTO_PATH.read_bytes()).decode()
+        # บังคับให้รูปยืดเต็มพื้นที่ของเลเยอร์ .hero-bg พอดี 
         return (f"background-image:url(data:image/jpeg;base64,{b64});"
-                "background-size: cover;"
+                "background-size: 100% 100%;"
                 "background-position: center;"
                 "background-repeat: no-repeat;")
     except OSError:
