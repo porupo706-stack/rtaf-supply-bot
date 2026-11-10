@@ -7,11 +7,14 @@ import base64
 from pathlib import Path
 
 LOGO_PATH = Path(__file__).parent / "assets" / "logo.png"
+PHOTO_PATH = Path(__file__).parent / "assets" / "hero-photo.jpg"
 
 NAVY = "#0A2A5E"
 BLUE = "#1F5FBF"
 SKY = "#E1EAF7"
 GOLD = "#C9A227"
+SLATE = "#2C3E50"    # โทนเดียวกับหัวเว็บ LMIS พัสดุ ทอ. (สีจริงที่ดึงมาจากภาพหน้าจอ)
+SLATE_LT = "#4D7494"
 
 THEME_CSS = f"""
 <style>
@@ -24,16 +27,15 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .hero {{
   position: relative; overflow: hidden; margin: .2rem 0 1.2rem 0;
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
-  background:
-    radial-gradient(circle at 92% 8%, rgba(255,255,255,.18) 0, rgba(255,255,255,0) 34%),
-    linear-gradient(135deg, {NAVY} 0%, #123F86 55%, {BLUE} 100%);
+  background: linear-gradient(100deg, {SLATE} 0%, {SLATE} 60%, {SLATE_LT} 100%);
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
   border-bottom: 4px solid {GOLD};
 }}
-.hero::after {{  /* ลายเส้นเฉียงคล้ายปีก/ทางวิ่ง */
-  content: ""; position: absolute; right: -40px; top: -20px; width: 260px; height: 200px;
-  background: repeating-linear-gradient(115deg, rgba(255,255,255,.07) 0 10px, transparent 10px 22px);
-  transform: skewX(-12deg); pointer-events: none;
+.hero-scrim {{  /* ไล่สีเข้มทับภาพถ่ายฝั่งซ้าย ให้ตัวหนังสืออ่านออกชัด บังตัวหนังสือ/โลโก้เดิมในภาพให้หมด */
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(100deg,
+    rgba(7,19,38,.98) 0%, rgba(7,19,38,.98) 56%,
+    rgba(7,19,38,.78) 68%, rgba(7,19,38,.18) 86%, rgba(7,19,38,0) 100%);
 }}
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
 .hero .hero-icon {{
@@ -117,8 +119,19 @@ def _logo_html() -> str:
         return '<div class="hero-icon">✈️</div>'
 
 
+def _photo_style() -> str:
+    """ภาพถ่ายเครื่องบินจริงเป็นพื้นหลัง header (assets/hero-photo.jpg) ถ้าไม่มีไฟล์ใช้พื้นสีเรียบแทน"""
+    try:
+        b64 = base64.b64encode(PHOTO_PATH.read_bytes()).decode()
+        return (f"background-image:url(data:image/jpeg;base64,{b64});"
+                "background-size:cover;background-position:60% center;")
+    except OSError:
+        return ""
+
+
 HERO_HTML = """
-<div class="hero">
+<div class="hero" style="__PHOTO__">
+  <div class="hero-scrim" aria-hidden="true"></div>
   <div class="hero-top">
     __LOGO__
     <div>
@@ -131,11 +144,11 @@ HERO_HTML = """
   <div class="hero-tags">
     <span>📘 ระเบียบ/ข้อบังคับ</span><span>🔎 ค้นหาเร็ว</span><span>📌 อ้างอิงต้นฉบับ</span>
   </div>
-  
+
   <!-- บรรทัดที่สอง: ชื่อผู้จัดทำ (บังคับขึ้นบรรทัดใหม่) -->
   <div class="hero-tags" style="margin-top: 0.4rem;">
     <span>ออกแบบโดย พ.อ.อ.กนก คงสีทอง</span>
   </div>
 </div>
 """
-HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html())
+HERO_HTML = HERO_HTML.replace("__LOGO__", _logo_html()).replace("__PHOTO__", _photo_style())
