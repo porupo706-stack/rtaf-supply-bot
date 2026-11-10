@@ -29,13 +29,13 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
   background-color: {SLATE}; 
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
+  border-bottom: 4px solid {GOLD};
 }}
 
-/* เลเยอร์พื้นหลังแยก: ดันขอบขาวที่มากับรูปต้นฉบับออกไปนอกกรอบ */
+/* เลเยอร์พื้นหลังแยก: ขยายให้ใหญ่ล้นกรอบออกไป 40px ทุกด้าน เพื่อดันขอบขาวของรูปให้ตกขอบ */
 .hero-bg {{
   position: absolute;
-  /* ค่าเหล่านี้ตั้งมาเพื่อดันขอบขาวของรูปต้นฉบับออกไป ให้เหลือแต่ส่วนรูปจริงๆ */
-  top: -45px; bottom: -35px; left: -25px; right: -25px;
+  top: -40px; left: -40px; right: -40px; bottom: -40px;
   z-index: 0;
 }}
 
@@ -136,9 +136,8 @@ def _photo_style() -> str:
     """ภาพถ่ายเครื่องบินจริงเป็นพื้นหลัง header (assets/hero-photo.jpg) ถ้าไม่มีไฟล์ใช้พื้นสีเรียบแทน"""
     try:
         b64 = base64.b64encode(PHOTO_PATH.read_bytes()).decode()
-        # บังคับให้รูปยืดเต็มพื้นที่ของเลเยอร์ .hero-bg พอดี 
         return (f"background-image:url(data:image/jpeg;base64,{b64});"
-                "background-size: 100% 100%;"
+                "background-size: cover;"
                 "background-position: center;"
                 "background-repeat: no-repeat;")
     except OSError:
@@ -147,7 +146,7 @@ def _photo_style() -> str:
 
 HERO_HTML = """
 <div class="hero">
-  <!-- เลเยอร์พื้นหลัง -->
+  <!-- แยกเลเยอร์พื้นหลังออกมาต่างหาก เพื่อให้รูปขยายทะลุกรอบได้ -->
   <div class="hero-bg" style="__PHOTO__"></div>
   
   <div class="hero-top">
