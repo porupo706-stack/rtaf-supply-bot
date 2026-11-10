@@ -29,13 +29,13 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
   background-color: {SLATE}; 
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
-  border-bottom: 4px solid {GOLD};
+  /* เอาเส้นขอบทองด้านล่างออกแล้ว */
 }}
 
-/* เลเยอร์พื้นหลังแยก: ขยายให้ใหญ่ล้นกรอบออกไป 40px ทุกด้าน เพื่อดันขอบขาวของรูปให้ตกขอบ */
+/* เลเยอร์พื้นหลังแยก: ขยายให้ใหญ่ล้นกรอบออกไปให้มากขึ้น (โดยเฉพาะบน-ล่าง) เพื่อดันขอบขาวของรูปให้ตกขอบ */
 .hero-bg {{
   position: absolute;
-  top: -40px; left: -40px; right: -40px; bottom: -40px;
+  top: -100px; left: -50px; right: -50px; bottom: -100px;
   z-index: 0;
 }}
 
