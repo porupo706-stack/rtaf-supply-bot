@@ -13,7 +13,7 @@ NAVY = "#0A2A5E"
 BLUE = "#1F5FBF"
 SKY = "#E1EAF7"
 GOLD = "#C9A227"
-SLATE = "#2C3E50"    # โทนเดียวกับหัวเว็บ LMIS พัสดุ ทอ. (สีจริงที่ดึงมาจากภาพหน้าจอ)
+SLATE = "#2C3E50"    
 SLATE_LT = "#4D7494"
 
 THEME_CSS = f"""
@@ -27,7 +27,7 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .hero {{
   position: relative; overflow: hidden; margin: .2rem 0 1.2rem 0;
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
-  background-color: {SLATE}; /* สีพื้นหลังสำรองกรณีโหลดภาพไม่ขึ้น */
+  background-color: {SLATE}; 
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
   border-bottom: 4px solid {GOLD};
 }}
@@ -41,7 +41,7 @@ header[data-testid="stHeader"] {{ background: transparent; }}
 .hero .hero-icon.has-logo {{ border-radius: .85rem; overflow: hidden; padding: 0; background: none; }}
 .hero .hero-icon img {{ width: 100%; height: 100%; display:block; object-fit: cover; }}
 
-/* เพิ่ม text-shadow เพื่อให้อ่านตัวหนังสือสีขาวบนพื้นฟ้าสว่างได้ชัดเจน */
+/* Text-shadow เพื่อให้อ่านตัวหนังสือสีขาวบนพื้นฟ้าสว่างได้ชัดเจน */
 .hero h1 {{ 
   margin:0; padding:0; font-size: 1.45rem; line-height:1.35; 
   font-weight:800; color:#fff; letter-spacing:.2px; 
@@ -128,10 +128,11 @@ def _photo_style() -> str:
     """ภาพถ่ายเครื่องบินจริงเป็นพื้นหลัง header (assets/hero-photo.jpg) ถ้าไม่มีไฟล์ใช้พื้นสีเรียบแทน"""
     try:
         b64 = base64.b64encode(PHOTO_PATH.read_bytes()).decode()
+        # บังคับซูมภาพ (105% 120%) เพื่อดันขอบขาวที่ติดมากับรูปต้นฉบับให้ออกไปนอกกรอบ
         return (f"background-image:url(data:image/jpeg;base64,{b64});"
-                "background-size:cover;"
-                "background-position:center;"
-                "background-repeat:no-repeat;")
+                "background-size: 105% 120%;"
+                "background-position: center;"
+                "background-repeat: no-repeat;")
     except OSError:
         return ""
 
