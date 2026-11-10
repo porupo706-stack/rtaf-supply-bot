@@ -29,14 +29,15 @@ header[data-testid="stHeader"] {{ background: transparent; }}
   padding: 1.5rem 1.6rem 1.4rem 1.6rem; border-radius: 1rem; color: #fff;
   background-color: {SLATE}; 
   box-shadow: 0 10px 26px rgba(10,42,94,.28);
-  /* เอาเส้นขอบทองด้านล่างออกแล้ว */
 }}
 
-/* เลเยอร์พื้นหลังแยก: ขยายให้ใหญ่ล้นกรอบออกไปให้มากขึ้น (โดยเฉพาะบน-ล่าง) เพื่อดันขอบขาวของรูปให้ตกขอบ */
+/* ใช้ transform เพื่อซูมภาพพื้นหลัง (ชดเชยขอบขาวที่ติดมากับรูป) แล้วปรับตำแหน่งเครื่องบินให้ขยับลงและเข้าในกรอบ */
 .hero-bg {{
   position: absolute;
-  top: -100px; left: -50px; right: -50px; bottom: -100px;
+  top: 0; left: 0; right: 0; bottom: 0;
   z-index: 0;
+  /* ซูมภาพ 120% (เพื่อดันขอบขาวออก) และเลื่อนภาพลง + ไปทางซ้ายนิดหน่อย เพื่อดึงเครื่องบินกลับมาให้เห็นทั้งลำ */
+  transform: scale(1.2) translate(-3%, 8%); 
 }}
 
 .hero .hero-top {{ display:flex; align-items:center; gap:.85rem; position:relative; z-index:1; }}
@@ -146,7 +147,7 @@ def _photo_style() -> str:
 
 HERO_HTML = """
 <div class="hero">
-  <!-- แยกเลเยอร์พื้นหลังออกมาต่างหาก เพื่อให้รูปขยายทะลุกรอบได้ -->
+  <!-- เลเยอร์พื้นหลัง -->
   <div class="hero-bg" style="__PHOTO__"></div>
   
   <div class="hero-top">
