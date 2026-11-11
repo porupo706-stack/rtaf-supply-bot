@@ -11,11 +11,15 @@ setup_token.py — ออกกุญแจเข้าระบบ (ทำค�
   5. ปิด Chrome และลบโปรไฟล์ชั่วคราวทิ้ง
 
 ติดตั้งก่อนครั้งแรก:  pip install -r requirements-admin.txt
+
+หลายระบบ/หลายบัญชีบนเครื่องเดียว: ใส่ --profile ชื่อระบบ เพื่อไม่ให้กุญแจชนกัน
+    python setup_token.py --profile systemB --account อีเมลของบัญชีที่สอง@gmail.com
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -84,6 +88,10 @@ def wait_for_port(port: int, timeout: float = 30.0, host: str = "127.0.0.1") -> 
     return False
 
 
+def valid_profile_name(name: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9_-]{1,40}", name or ""))
+
+
 def build_login_cmd(email: str, port: int, force: bool = False, python: str | None = None) -> list[str]:
     cmd = [python or sys.executable, "-m", "notebooklm", "login", "--master-token",
            "--account", email, "--cdp-url", f"http://localhost:{port}"]
@@ -134,9 +142,18 @@ def main(argv: list[str] | None = None, *, launch=launch_chrome, run_cmd=subproc
     ap.add_argument("--account", help="อีเมลบัญชี Google เฉพาะกิจ (ถ้าไม่ใส่จะถามตอนรัน)")
     ap.add_argument("--chrome", help="ตำแหน่งไฟล์ Chrome (ถ้าหาเองไม่เจอ)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
+    ap.add_argument("--profile",
+                    help="ชื่อโปรไฟล์บนเครื่องนี้ (ใช้แยกกุญแจของแต่ละระบบ/บัญชี เช่น systemB)")
     ap.add_argument("--force", action="store_true",
                     help="ออกใหม่ทับ แม้โปรไฟล์นี้เคยผูกกับบัญชีอื่น")
     args = ap.parse_args(argv)
+
+    if args.profile:
+        if not valid_profile_name(args.profile):
+            print("❌ ชื่อโปรไฟล์ใช้ได้เฉพาะ a-z A-Z 0-9 _ - (ยาวไม่เกิน 40 ตัว)")
+            return 2
+        # ทั้งคำสั่งล็อกอินและตัวพิมพ์ค่า Secrets อ่านโปรไฟล์นี้จากตัวแปรสภาพแวดล้อม
+        os.environ["NOTEBOOKLM_PROFILE"] = args.profile
 
     email = (args.account or ask("อีเมลบัญชี Google เฉพาะกิจ: ")).strip()
     if "@" not in email:
@@ -167,6 +184,9 @@ def main(argv: list[str] | None = None, *, launch=launch_chrome, run_cmd=subproc
         code = run_cmd(build_login_cmd(email, port, args.force))
         if code != 0:
             print("❌ ออกกุญแจไม่สำเร็จ ดูข้อความด้านบน แล้วลองรันใหม่ (อย่าปิดหน้าต่าง Chrome ก่อนเสร็จ)")
+            if not args.profile:
+                print("   ถ้าเครื่องนี้เคยออกกุญแจของบัญชีอื่นไว้แล้ว ให้แยกโปรไฟล์:")
+                print(f"   python setup_token.py --profile ชื่อระบบ --account {email}")
             return 1
 
         print()
